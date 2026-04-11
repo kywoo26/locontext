@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from hashlib import sha256
-from typing import Final
+from importlib import import_module
+from typing import Final, Protocol, cast
 from uuid import uuid4
 
 from ..domain.contracts import DiscoveryProvider, IndexingEngine
@@ -27,12 +28,12 @@ class RefreshOrchestrator:
     def __init__(
         self,
         store: SQLiteStore,
-        discovery_provider: DiscoveryProvider,
-        indexing_engine: IndexingEngine,
+        discovery_provider: DiscoveryProvider | None = None,
+        indexing_engine: IndexingEngine | None = None,
     ) -> None:
         self._store = store
-        self._discovery_provider = discovery_provider
-        self._indexing_engine = indexing_engine
+        self._discovery_provider = discovery_provider or _default_discovery_provider()
+        self._indexing_engine = indexing_engine or _default_indexing_engine()
 
     def refresh_source(self, source_id: str) -> RefreshResult:
         source = self._require_source(source_id)
@@ -119,3 +120,27 @@ def _manifest_hash(documents: list[DiscoveredDocument]) -> str:
         for document in documents
     )
     return sha256(payload.encode("utf-8")).hexdigest()
+
+
+class _WebProviderModule(Protocol):
+    WebDiscoveryProvider: type[DiscoveryProvider]
+
+
+class _EngineModule(Protocol):
+    NoopIndexingEngine: type[IndexingEngine]
+
+
+def _default_discovery_provider() -> DiscoveryProvider:
+    module = cast(
+        _WebProviderModule,
+        cast(object, import_module("locontext.sources.web.provider")),
+    )
+    return module.WebDiscoveryProvider()
+
+
+def _default_indexing_engine() -> IndexingEngine:
+    module = cast(
+        _EngineModule,
+        cast(object, import_module("locontext.engine.noop")),
+    )
+    return module.NoopIndexingEngine()

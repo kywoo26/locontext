@@ -78,5 +78,8 @@ include = ["src", "tests"]
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-addopts = "-ra --import-mode=importlib"
+addopts = "-ra --import-mode=importlib -m 'not integration'"
 testpaths = ["tests"]
+markers = [
+  "integration: tests that exercise real heavy integrations and are excluded from the default fast unit loop",
+]
