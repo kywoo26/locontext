@@ -87,6 +87,50 @@ class SQLiteStore:
             updated_at=cast(str | None, row["updated_at"]),
         )
 
+    def get_source_by_canonical_locator(self, canonical_locator: str) -> Source | None:
+        row = cast(
+            sqlite3.Row | None,
+            self._connection.execute(
+                "SELECT * FROM sources WHERE canonical_locator = ?",
+                (canonical_locator,),
+            ).fetchone(),
+        )
+        if row is None:
+            return None
+        return Source(
+            source_id=cast(str, row["source_id"]),
+            source_kind=SourceKind(cast(str, row["source_kind"])),
+            requested_locator=cast(str, row["requested_locator"]),
+            resolved_locator=cast(str | None, row["resolved_locator"]),
+            canonical_locator=cast(str, row["canonical_locator"]),
+            docset_root=cast(str, row["docset_root"]),
+            active_snapshot_id=cast(str | None, row["active_snapshot_id"]),
+            created_at=cast(str | None, row["created_at"]),
+            updated_at=cast(str | None, row["updated_at"]),
+        )
+
+    def list_sources(self) -> list[Source]:
+        rows = cast(
+            list[sqlite3.Row],
+            self._connection.execute(
+                "SELECT * FROM sources ORDER BY canonical_locator ASC"
+            ).fetchall(),
+        )
+        return [
+            Source(
+                source_id=cast(str, row["source_id"]),
+                source_kind=SourceKind(cast(str, row["source_kind"])),
+                requested_locator=cast(str, row["requested_locator"]),
+                resolved_locator=cast(str | None, row["resolved_locator"]),
+                canonical_locator=cast(str, row["canonical_locator"]),
+                docset_root=cast(str, row["docset_root"]),
+                active_snapshot_id=cast(str | None, row["active_snapshot_id"]),
+                created_at=cast(str | None, row["created_at"]),
+                updated_at=cast(str | None, row["updated_at"]),
+            )
+            for row in rows
+        ]
+
     def insert_snapshot(self, snapshot: Snapshot) -> None:
         _ = self._connection.execute(
             """
