@@ -8,6 +8,10 @@ version = "0.1.0"
 description = "Local-first context engine for docs grounding."
 readme = "README.md"
 requires-python = ">=3.13"
+dependencies = [
+  "click>=8.3.2",
+  "httpx>=0.28.1",
+]
 license = { text = "MIT" }
 authors = [
   { name = "kywoo26" },
@@ -22,8 +26,57 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
 ]
 
+[project.scripts]
+locontext = "locontext.cli.main:main"
+
+[dependency-groups]
+dev = [
+  "pre-commit>=4.3.0",
+  "pytest>=8.4.2",
+  "ruff>=0.14.0",
+  "ty>=0.0.29",
+]
+
+[tool.uv]
+package = true
+
 [tool.setuptools]
 package-dir = { "" = "src" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+src = ["src", "tests"]
+extend-exclude = [
+  ".venv",
+  ".pytest_cache",
+  ".ruff_cache",
+  ".sisyphus",
+  "dist",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B"]
+ignore = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.ty]
+
+[tool.ty.environment]
+python-version = "3.13"
+
+[tool.basedpyright]
+venvPath = "."
+venv = ".venv"
+include = ["src", "tests"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra --import-mode=importlib"
+testpaths = ["tests"]
