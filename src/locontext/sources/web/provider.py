@@ -13,7 +13,11 @@ from .discovery import (
     filter_and_order_discovered_documents,
     filter_and_order_discovered_locators,
 )
-from .extract import ExtractedWebContent, extract_web_content
+from .extract import (
+    ExtractedWebContent,
+    extract_web_content,
+    structured_content_as_dicts,
+)
 from .fetch import FetchedWebPage, fetch_web_page
 
 
@@ -88,6 +92,9 @@ def _to_discovered_document(
             "status_code": page.status_code,
             "content_type": page.content_type,
             "extracted_text": extracted.text,
+            "structured_content": structured_content_as_dicts(
+                extracted.structured_content
+            ),
         },
     )
 
