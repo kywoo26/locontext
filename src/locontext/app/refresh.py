@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from hashlib import sha256
 from importlib import import_module
 from typing import Final, Protocol, cast
@@ -59,6 +60,7 @@ class RefreshOrchestrator:
             snapshot_id=uuid4().hex,
             source_id=source_id,
             status=SnapshotStatus.PENDING,
+            fetched_at=datetime.now(UTC).isoformat(),
             content_hash=manifest_hash,
             is_active=False,
         )
@@ -98,7 +100,7 @@ class RefreshOrchestrator:
 
     def remove_source(self, source_id: str) -> None:
         self._indexing_engine.remove_source(source_id)
-        self._store.delete_source(source_id)
+        _ = self._store.delete_source(source_id)
 
     def _require_source(self, source_id: str) -> Source:
         source = self._store.get_source(source_id)
