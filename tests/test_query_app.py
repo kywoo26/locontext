@@ -205,6 +205,27 @@ class QueryAppContractTest(unittest.TestCase):
             ],
         )
 
+    def test_query_local_returns_chunk_level_results_for_structured_content(
+        self,
+    ) -> None:
+        self._insert_snapshot_with_chunks(
+            "snapshot-active",
+            active=True,
+            status=SnapshotStatus.INDEXED,
+            document_locator="https://docs.example.com/docs/guide",
+            chunks=[
+                "Guide > Intro Alpha paragraph",
+                "Guide > Intro > Setup Beta paragraph",
+            ],
+        )
+
+        hits = self._query_local("paragraph", limit=10)
+
+        self.assertEqual(len(hits), 2)
+        self.assertEqual([hit.chunk_index for hit in hits], [0, 1])
+        self.assertIn("Guide > Intro", hits[0].text)
+        self.assertIn("Guide > Intro > Setup", hits[1].text)
+
 
 if __name__ == "__main__":
     _ = unittest.main()

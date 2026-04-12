@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 import unittest
+from collections.abc import Sequence
 from importlib import import_module
 from typing import Protocol, cast
 
@@ -23,6 +24,13 @@ class _QueryHitLike(Protocol):
 
 
 class _SQLiteLexicalEngineLike(Protocol):
+    def reindex_snapshot(
+        self,
+        source: Source,
+        snapshot: Snapshot,
+        documents: Sequence[object],
+    ) -> None: ...
+
     def query(self, text: str, *, limit: int) -> list[_QueryHitLike]: ...
 
 
@@ -199,6 +207,49 @@ class SQLiteLexicalEngineContractTest(unittest.TestCase):
             ],
         )
         self.assertEqual([hit.chunk_index for hit in hits], [0, 1])
+
+    def test_reindex_snapshot_creates_multiple_chunks_from_structured_text(
+        self,
+    ) -> None:
+        engine = self._make_engine()
+        snapshot = Snapshot(
+            snapshot_id="snapshot-structured",
+            source_id=self.source.source_id,
+            status=SnapshotStatus.INDEXED,
+            content_hash="hash-structured",
+            is_active=True,
+        )
+        self.store.insert_snapshot(snapshot)
+        documents = self.store.replace_snapshot_documents(
+            snapshot.snapshot_id,
+            self.source.source_id,
+            [
+                DiscoveredDocument(
+                    requested_locator="https://docs.example.com/docs/guide",
+                    resolved_locator="https://docs.example.com/docs/guide",
+                    canonical_locator="https://docs.example.com/docs/guide",
+                    title="Guide",
+                    content_hash="doc-hash-structured",
+                    metadata={
+                        "structured_content": [
+                            {"kind": "heading", "level": 1, "text": "Intro"},
+                            {"kind": "paragraph", "text": "Alpha paragraph."},
+                            {"kind": "heading", "level": 2, "text": "Setup"},
+                            {"kind": "paragraph", "text": "Beta paragraph."},
+                        ]
+                    },
+                )
+            ],
+        )
+        self.store.activate_snapshot(self.source.source_id, snapshot.snapshot_id)
+
+        engine.reindex_snapshot(self.source, snapshot, documents)
+
+        hits = engine.query("paragraph", limit=10)
+        self.assertEqual(len(hits), 2)
+        self.assertEqual([hit.chunk_index for hit in hits], [0, 1])
+        self.assertIn("Guide > Intro", hits[0].text)
+        self.assertIn("Guide > Intro > Setup", hits[1].text)
 
 
 if __name__ == "__main__":
