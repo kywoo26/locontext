@@ -25,6 +25,25 @@ class _QueryHitLike(Protocol):
     text: str
 
 
+class _QueryEnvelopeLike(Protocol):
+    query_text: str
+    limit: int
+    source_id: str | None
+    hit_count: int
+    hits: list[object]
+
+
+class _QueryLocalJson(Protocol):
+    def __call__(
+        self,
+        store: SQLiteStore,
+        text: str,
+        *,
+        limit: int,
+        source_id: str | None = None,
+    ) -> _QueryEnvelopeLike: ...
+
+
 class _QueryLocal(Protocol):
     def __call__(
         self,
@@ -72,6 +91,25 @@ class QueryAppContractTest(unittest.TestCase):
         if query_local is None:
             self.fail("expected locontext.app.query.query_local")
         return query_local(self.store, text, limit=limit, source_id=source_id)
+
+    def _query_local_json(
+        self,
+        text: str,
+        limit: int,
+        *,
+        source_id: str | None = None,
+    ) -> _QueryEnvelopeLike:
+        try:
+            module = import_module("locontext.app.query")
+        except ModuleNotFoundError as exc:
+            self.fail(f"expected locontext.app.query module: {exc}")
+
+        query_local_json = cast(
+            _QueryLocalJson | None, getattr(module, "query_local_json", None)
+        )
+        if query_local_json is None:
+            self.fail("expected locontext.app.query.query_local_json")
+        return query_local_json(self.store, text, limit=limit, source_id=source_id)
 
     def _insert_snapshot_with_chunks(
         self,
@@ -254,6 +292,22 @@ class QueryAppContractTest(unittest.TestCase):
 
         self.assertEqual(len(hits), 1)
         self.assertEqual(hits[0].source_id, self.source.source_id)
+
+    def test_query_local_json_returns_stable_envelope(self) -> None:
+        self._insert_snapshot_with_chunks(
+            "snapshot-active",
+            active=True,
+            status=SnapshotStatus.INDEXED,
+            document_locator="https://docs.example.com/docs/guide",
+            chunks=["shared machine query term"],
+        )
+
+        result = self._query_local_json("shared machine query term", limit=5)
+
+        self.assertEqual(result.query_text, "shared machine query term")
+        self.assertEqual(result.limit, 5)
+        self.assertIsNone(result.source_id)
+        self.assertEqual(result.hit_count, 1)
 
 
 if __name__ == "__main__":

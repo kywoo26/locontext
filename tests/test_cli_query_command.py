@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 import unittest
 from pathlib import Path
@@ -246,6 +247,7 @@ class QueryCommandContractTest(unittest.TestCase):
         self.assertIn("Usage:", result.output)
         self.assertIn("--limit INTEGER", result.output)
         self.assertIn("--source TEXT", result.output)
+        self.assertIn("--json", result.output)
 
     def test_query_reports_stable_success_output_for_active_hits_only(self) -> None:
         with self.runner.isolated_filesystem():
@@ -285,6 +287,57 @@ class QueryCommandContractTest(unittest.TestCase):
                 "   snippet: shared query text from other source content",
             ],
         )
+
+    def test_query_json_reports_machine_readable_envelope(self) -> None:
+        with self.runner.isolated_filesystem():
+            self._seed_query_state()
+
+            result = self.runner.invoke(
+                main, ["query", "shared query text", "--limit", "2", "--json"]
+            )
+
+        self.assertEqual(result.exit_code, 0)
+        payload = json.loads(result.output)
+        self.assertEqual(payload["query"]["text"], "shared query text")
+        self.assertEqual(payload["query"]["limit"], 2)
+        self.assertIsNone(payload["query"]["source_id"])
+        self.assertEqual(payload["hit_count"], 2)
+        self.assertEqual(
+            payload["hits"][0]["source_locator"], "https://docs.example.com/docs"
+        )
+        self.assertIn("snippet", payload["hits"][0])
+
+    def test_query_json_source_filter_narrows_results(self) -> None:
+        with self.runner.isolated_filesystem():
+            self._seed_query_state()
+
+            result = self.runner.invoke(
+                main,
+                [
+                    "query",
+                    "shared query text",
+                    "--limit",
+                    "5",
+                    "--source",
+                    "source-2",
+                    "--json",
+                ],
+            )
+
+        self.assertEqual(result.exit_code, 0)
+        payload = json.loads(result.output)
+        self.assertEqual(payload["query"]["source_id"], "source-2")
+        self.assertEqual(payload["hit_count"], 1)
+        self.assertEqual(payload["hits"][0]["source_id"], "source-2")
+
+    def test_query_json_reports_stable_empty_result(self) -> None:
+        with self.runner.isolated_filesystem():
+            result = self.runner.invoke(main, ["query", "definitely-no-hit", "--json"])
+
+        self.assertEqual(result.exit_code, 0)
+        payload = json.loads(result.output)
+        self.assertEqual(payload["hit_count"], 0)
+        self.assertEqual(payload["hits"], [])
 
 
 if __name__ == "__main__":
