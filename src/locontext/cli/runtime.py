@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..config.settings import Settings, load_settings
-from ..store.migrations import apply_migrations
+from ..store.migration_runner import apply_migrations
 from ..store.sqlite import SQLiteStore
 
 

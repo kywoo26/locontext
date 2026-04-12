@@ -22,13 +22,13 @@ class StoreMigrationsTest(unittest.TestCase):
         super().tearDown()
 
     def _apply_migrations(self) -> None:
-        module = import_module("locontext.store.migrations")
+        module = import_module("locontext.store.migration_runner")
         apply_migrations = cast(
             _ApplyMigrations | None,
             getattr(module, "apply_migrations", None),
         )
         if apply_migrations is None:
-            self.fail("expected locontext.store.migrations.apply_migrations")
+            self.fail("expected locontext.store.migration_runner.apply_migrations")
         apply_migrations(self.connection)
 
     def test_apply_migrations_bootstraps_schema_and_records_version(self) -> None:
