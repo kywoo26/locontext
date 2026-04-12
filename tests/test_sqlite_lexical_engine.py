@@ -17,6 +17,7 @@ from locontext.store.sqlite import SQLiteStore
 
 
 class _QueryHitLike(Protocol):
+    source_id: str
     snapshot_id: str
     chunk_id: str
     chunk_index: int
@@ -31,7 +32,9 @@ class _SQLiteLexicalEngineLike(Protocol):
         documents: Sequence[object],
     ) -> None: ...
 
-    def query(self, text: str, *, limit: int) -> list[_QueryHitLike]: ...
+    def query(
+        self, text: str, *, limit: int, source_id: str | None = None
+    ) -> list[_QueryHitLike]: ...
 
 
 class SQLiteLexicalEngineContractTest(unittest.TestCase):
@@ -250,6 +253,86 @@ class SQLiteLexicalEngineContractTest(unittest.TestCase):
         self.assertEqual([hit.chunk_index for hit in hits], [0, 1])
         self.assertIn("Guide > Intro", hits[0].text)
         self.assertIn("Guide > Intro > Setup", hits[1].text)
+
+    def test_query_can_filter_by_source_id(self) -> None:
+        engine = self._make_engine()
+        other_source = Source(
+            source_id="source-2",
+            source_kind=SourceKind.WEB,
+            requested_locator="https://docs.example.com/other",
+            resolved_locator="https://docs.example.com/other",
+            canonical_locator="https://docs.example.com/other",
+            docset_root="https://docs.example.com/other",
+        )
+        self.store.upsert_source(other_source)
+        self._insert_snapshot_with_chunks(
+            "snapshot-active-1",
+            active=True,
+            status=SnapshotStatus.INDEXED,
+            document_locator="https://docs.example.com/docs/guide",
+            chunks=["shared filter term from source one"],
+        )
+
+        snapshot = Snapshot(
+            snapshot_id="snapshot-active-2",
+            source_id=other_source.source_id,
+            status=SnapshotStatus.INDEXED,
+            content_hash="hash-source-2",
+            is_active=True,
+        )
+        self.store.insert_snapshot(snapshot)
+        _ = self.store.replace_snapshot_documents(
+            snapshot.snapshot_id,
+            other_source.source_id,
+            [
+                DiscoveredDocument(
+                    requested_locator="https://docs.example.com/other/page",
+                    resolved_locator="https://docs.example.com/other/page",
+                    canonical_locator="https://docs.example.com/other/page",
+                    title="Other",
+                    content_hash="doc-hash-other",
+                )
+            ],
+        )
+        _ = self.connection.execute(
+            """
+            INSERT INTO chunks (
+                chunk_id, source_id, snapshot_id, document_id, chunk_index, text, metadata_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "snapshot-active-2-doc-0-chunk-0",
+                other_source.source_id,
+                snapshot.snapshot_id,
+                "snapshot-active-2-doc-0",
+                0,
+                "shared filter term from source two",
+                "{}",
+            ),
+        )
+        row = self.connection.execute(
+            "SELECT rowid FROM chunks WHERE chunk_id = ?",
+            ("snapshot-active-2-doc-0-chunk-0",),
+        ).fetchone()
+        if row is None:
+            self.fail("expected chunk rowid")
+        _ = self.connection.execute(
+            "INSERT INTO chunk_fts(rowid, chunk_id, text) VALUES (?, ?, ?)",
+            (
+                row[0],
+                "snapshot-active-2-doc-0-chunk-0",
+                "shared filter term from source two",
+            ),
+        )
+        self.connection.commit()
+        self.store.activate_snapshot(other_source.source_id, snapshot.snapshot_id)
+
+        hits = engine.query(
+            "shared filter term", limit=10, source_id=self.source.source_id
+        )
+
+        self.assertEqual(len(hits), 1)
+        self.assertEqual(hits[0].source_id, self.source.source_id)
 
 
 if __name__ == "__main__":
