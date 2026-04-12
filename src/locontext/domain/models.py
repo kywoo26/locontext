@@ -29,6 +29,20 @@ class Source:
 
 
 @dataclass(slots=True)
+class SourceSetMember:
+    source_id: str
+    canonical_locator: str
+    member_index: int
+
+
+@dataclass(slots=True)
+class SourceSet:
+    source_set_id: str
+    set_name: str
+    members: tuple[SourceSetMember, ...] = ()
+
+
+@dataclass(slots=True)
 class Snapshot:
     snapshot_id: str
     source_id: str
