@@ -317,11 +317,23 @@ class SQLiteStore:
         self._rebuild_chunk_fts()
         self._connection.commit()
 
-    def search_chunks(self, match_query: str, *, limit: int) -> list[QueryHit]:
+    def search_chunks(
+        self,
+        match_query: str,
+        *,
+        limit: int,
+        source_id: str | None = None,
+    ) -> list[QueryHit]:
+        where_filter = "AND chunks.source_id = ?" if source_id is not None else ""
+        parameters: tuple[object, ...]
+        if source_id is None:
+            parameters = (match_query, limit)
+        else:
+            parameters = (match_query, source_id, limit)
         rows = cast(
             list[sqlite3.Row],
             self._connection.execute(
-                """
+                f"""
                 SELECT
                     chunks.source_id,
                     chunks.snapshot_id,
@@ -336,6 +348,7 @@ class SQLiteStore:
                 JOIN snapshots ON snapshots.snapshot_id = chunks.snapshot_id
                 WHERE chunk_fts MATCH ?
                   AND snapshots.is_active = 1
+                  {where_filter}
                 ORDER BY
                     score ASC,
                     chunks.source_id ASC,
@@ -344,7 +357,7 @@ class SQLiteStore:
                     chunks.chunk_index ASC
                 LIMIT ?
                 """,
-                (match_query, limit),
+                parameters,
             ).fetchall(),
         )
         return [

@@ -27,7 +27,12 @@ class _QueryHitLike(Protocol):
 
 class _QueryLocal(Protocol):
     def __call__(
-        self, store: SQLiteStore, text: str, *, limit: int
+        self,
+        store: SQLiteStore,
+        text: str,
+        *,
+        limit: int,
+        source_id: str | None = None,
     ) -> list[_QueryHitLike]: ...
 
 
@@ -51,7 +56,13 @@ class QueryAppContractTest(unittest.TestCase):
         )
         self.store.upsert_source(self.source)
 
-    def _query_local(self, text: str, limit: int) -> list[_QueryHitLike]:
+    def _query_local(
+        self,
+        text: str,
+        limit: int,
+        *,
+        source_id: str | None = None,
+    ) -> list[_QueryHitLike]:
         try:
             module = import_module("locontext.app.query")
         except ModuleNotFoundError as exc:
@@ -60,7 +71,7 @@ class QueryAppContractTest(unittest.TestCase):
         query_local = cast(_QueryLocal | None, getattr(module, "query_local", None))
         if query_local is None:
             self.fail("expected locontext.app.query.query_local")
-        return query_local(self.store, text, limit=limit)
+        return query_local(self.store, text, limit=limit, source_id=source_id)
 
     def _insert_snapshot_with_chunks(
         self,
@@ -225,6 +236,24 @@ class QueryAppContractTest(unittest.TestCase):
         self.assertEqual([hit.chunk_index for hit in hits], [0, 1])
         self.assertIn("Guide > Intro", hits[0].text)
         self.assertIn("Guide > Intro > Setup", hits[1].text)
+
+    def test_query_local_passes_through_source_filter(self) -> None:
+        self._insert_snapshot_with_chunks(
+            "snapshot-active",
+            active=True,
+            status=SnapshotStatus.INDEXED,
+            document_locator="https://docs.example.com/docs/guide",
+            chunks=["shared filter term from source one"],
+        )
+
+        hits = self._query_local(
+            "shared filter term",
+            limit=10,
+            source_id=self.source.source_id,
+        )
+
+        self.assertEqual(len(hits), 1)
+        self.assertEqual(hits[0].source_id, self.source.source_id)
 
 
 if __name__ == "__main__":

@@ -40,6 +40,15 @@ class QueryCommandContractTest(unittest.TestCase):
                 docset_root="https://docs.example.com/docs",
             )
             store.upsert_source(source)
+            other_source = Source(
+                source_id="source-2",
+                source_kind=SourceKind.WEB,
+                requested_locator="https://docs.example.com/other",
+                resolved_locator="https://docs.example.com/other",
+                canonical_locator="https://docs.example.com/other",
+                docset_root="https://docs.example.com/other",
+            )
+            store.upsert_source(other_source)
             stale_snapshot = Snapshot(
                 snapshot_id="snapshot-stale",
                 source_id=source.source_id,
@@ -158,6 +167,66 @@ class QueryCommandContractTest(unittest.TestCase):
                 )
             connection.commit()
             store.activate_snapshot(source.source_id, active_snapshot.snapshot_id)
+
+            other_snapshot = Snapshot(
+                snapshot_id="snapshot-other",
+                source_id=other_source.source_id,
+                status=SnapshotStatus.INDEXED,
+                content_hash="hash-other",
+                is_active=True,
+            )
+            store.insert_snapshot(other_snapshot)
+            _ = store.replace_snapshot_documents(
+                other_snapshot.snapshot_id,
+                other_source.source_id,
+                [
+                    DiscoveredDocument(
+                        requested_locator="https://docs.example.com/other/page",
+                        resolved_locator="https://docs.example.com/other/page",
+                        canonical_locator="https://docs.example.com/other/page",
+                        title="Other Guide",
+                        content_hash="doc-hash-other",
+                    )
+                ],
+            )
+            _ = connection.execute(
+                """
+                INSERT INTO chunks (
+                    chunk_id,
+                    source_id,
+                    snapshot_id,
+                    document_id,
+                    chunk_index,
+                    text,
+                    metadata_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "snapshot-other-doc-0-chunk-0",
+                    other_source.source_id,
+                    other_snapshot.snapshot_id,
+                    "snapshot-other-doc-0",
+                    0,
+                    "shared query text from other source content",
+                    '{"section_path": ["Other"]}',
+                ),
+            )
+            other_row = connection.execute(
+                "SELECT rowid FROM chunks WHERE chunk_id = ?",
+                ("snapshot-other-doc-0-chunk-0",),
+            ).fetchone()
+            if other_row is None:
+                self.fail("expected other chunk rowid")
+            _ = connection.execute(
+                "INSERT INTO chunk_fts(rowid, chunk_id, text) VALUES (?, ?, ?)",
+                (
+                    other_row[0],
+                    "snapshot-other-doc-0-chunk-0",
+                    "shared query text from other source content",
+                ),
+            )
+            store.activate_snapshot(other_source.source_id, other_snapshot.snapshot_id)
+            connection.commit()
         finally:
             connection.close()
 
@@ -176,6 +245,7 @@ class QueryCommandContractTest(unittest.TestCase):
         self.assertEqual(result.exit_code, 0)
         self.assertIn("Usage:", result.output)
         self.assertIn("--limit INTEGER", result.output)
+        self.assertIn("--source TEXT", result.output)
 
     def test_query_reports_stable_success_output_for_active_hits_only(self) -> None:
         with self.runner.isolated_filesystem():
@@ -191,7 +261,28 @@ class QueryCommandContractTest(unittest.TestCase):
             [
                 "1. https://docs.example.com/docs",
                 "   document: https://docs.example.com/docs/guide",
-                "   chunk: shared query text from active content",
+                "   section: none",
+                "   snippet: shared query text from active content",
+            ],
+        )
+
+    def test_query_source_filter_narrows_results(self) -> None:
+        with self.runner.isolated_filesystem():
+            self._seed_query_state()
+
+            result = self.runner.invoke(
+                main,
+                ["query", "shared query text", "--limit", "5", "--source", "source-2"],
+            )
+
+        self.assertEqual(result.exit_code, 0)
+        self.assertEqual(
+            result.output.strip().splitlines(),
+            [
+                "1. https://docs.example.com/other",
+                "   document: https://docs.example.com/other/page",
+                "   section: Other",
+                "   snippet: shared query text from other source content",
             ],
         )
 
