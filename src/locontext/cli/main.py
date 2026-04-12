@@ -110,7 +110,12 @@ class _NoDiscoveryProvider:
 
 class _QueryModule(Protocol):
     def query_local(
-        self, store: SQLiteStore, text: str, *, limit: int
+        self,
+        store: SQLiteStore,
+        text: str,
+        *,
+        limit: int,
+        source_id: str | None = None,
     ) -> list[QueryHit]: ...
 
 
@@ -187,7 +192,8 @@ def source_reindex(source_id: str) -> None:
 @main.command()
 @click.argument("text", nargs=-1)
 @click.option("--limit", default=5, show_default=True, type=click.IntRange(min=1))
-def query(text: Sequence[str], limit: int) -> None:
+@click.option("--source", "source_id", type=str)
+def query(text: Sequence[str], limit: int, source_id: str | None) -> None:
     query_text = " ".join(text).strip()
     if not query_text:
         raise click.UsageError("Missing query text.")
@@ -195,7 +201,9 @@ def query(text: Sequence[str], limit: int) -> None:
     runtime = open_runtime()
     try:
         module = cast(_QueryModule, cast(object, import_module("locontext.app.query")))
-        hits = module.query_local(runtime.store, query_text, limit=limit)
+        hits = module.query_local(
+            runtime.store, query_text, limit=limit, source_id=source_id
+        )
         source_cache: dict[str, str] = {}
         document_cache: dict[str, dict[str, str]] = {}
         for hit in hits:
@@ -223,7 +231,34 @@ def query(text: Sequence[str], limit: int) -> None:
             document_locator = hit.document_id
         click.echo(f"{index}. {source_locator}")
         click.echo(f"   document: {document_locator}")
-        click.echo(f"   chunk: {hit.text}")
+        section_path = hit.metadata.get("section_path")
+        if isinstance(section_path, list) and section_path:
+            section = " > ".join(str(part) for part in cast(list[object], section_path))
+        else:
+            section = "none"
+        click.echo(f"   section: {section}")
+        click.echo(f"   snippet: {_build_snippet(hit.text, query_text)}")
+
+
+def _build_snippet(text: str, query_text: str, *, max_chars: int = 160) -> str:
+    normalized = " ".join(text.split())
+    if len(normalized) <= max_chars:
+        return normalized
+    terms = [term for term in query_text.split() if term]
+    lower = normalized.lower()
+    start = 0
+    for term in terms:
+        index = lower.find(term.lower())
+        if index != -1:
+            start = max(index - 20, 0)
+            break
+    end = min(start + max_chars, len(normalized))
+    snippet = normalized[start:end].strip()
+    if start > 0:
+        snippet = f"...{snippet}"
+    if end < len(normalized):
+        snippet = f"{snippet}..."
+    return snippet
 
 
 if __name__ == "__main__":
