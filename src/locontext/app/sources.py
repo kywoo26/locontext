@@ -4,7 +4,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from ..domain.models import SnapshotStatus, Source, SourceKind
+from ..domain.models import (
+    SnapshotStatus,
+    Source,
+    SourceKind,
+    SourceSet,
+)
 from ..sources.web.canonicalize import canonicalize_locator, infer_docset_root
 from ..store.sqlite import SQLiteStore
 from .refresh import get_freshness_state
@@ -36,6 +41,27 @@ class SourceStatusResult:
     last_modified: str | None
     freshness_state: str
     freshness_reason: str
+
+
+@dataclass(slots=True)
+class SourceSetMemberResult:
+    source_id: str
+    canonical_locator: str
+    member_index: int
+
+
+@dataclass(slots=True)
+class SourceSetResult:
+    source_set_id: str
+    set_name: str
+    members: tuple[SourceSetMemberResult, ...] = ()
+
+
+@dataclass(slots=True)
+class SourceSetCreationResult:
+    source_set: SourceSetResult
+    created: bool
+    duplicate_source_ids: tuple[str, ...] = ()
 
 
 def register_source(
@@ -117,3 +143,75 @@ def _source_status_from_source(
         freshness_state=freshness.code,
         freshness_reason=freshness.reason,
     )
+
+
+def create_source_set(
+    store: SQLiteStore, set_name: str, source_ids: list[str]
+) -> SourceSetCreationResult:
+    normalized_source_ids, duplicate_source_ids = _normalize_source_ids(source_ids)
+    missing_source_ids = tuple(
+        source_id
+        for source_id in normalized_source_ids
+        if store.get_source(source_id) is None
+    )
+    if missing_source_ids:
+        missing = ", ".join(missing_source_ids)
+        raise KeyError(f"Sources not found for source set {set_name!r}: {missing}")
+
+    existing = store.get_source_set(set_name)
+    source_set_id = existing.source_set_id if existing is not None else uuid4().hex
+    _ = store.create_source_set(source_set_id, set_name, list(normalized_source_ids))
+    source_set = store.get_source_set(set_name)
+    if source_set is None:
+        raise RuntimeError(f"Source set could not be loaded after save: {set_name}")
+    return SourceSetCreationResult(
+        source_set=_source_set_result_from_store(source_set),
+        created=existing is None,
+        duplicate_source_ids=duplicate_source_ids,
+    )
+
+
+def list_source_sets(store: SQLiteStore) -> list[SourceSetResult]:
+    return [
+        _source_set_result_from_store(source_set)
+        for source_set in store.list_source_sets()
+    ]
+
+
+def get_source_set(store: SQLiteStore, set_name: str) -> SourceSetResult | None:
+    source_set = store.get_source_set(set_name)
+    if source_set is None:
+        return None
+    return _source_set_result_from_store(source_set)
+
+
+def _source_set_result_from_store(source_set: SourceSet) -> SourceSetResult:
+    return SourceSetResult(
+        source_set_id=source_set.source_set_id,
+        set_name=source_set.set_name,
+        members=tuple(
+            SourceSetMemberResult(
+                source_id=member.source_id,
+                canonical_locator=member.canonical_locator,
+                member_index=member.member_index,
+            )
+            for member in source_set.members
+        ),
+    )
+
+
+def _normalize_source_ids(
+    source_ids: list[str],
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    normalized_source_ids: list[str] = []
+    duplicate_source_ids: list[str] = []
+    seen: set[str] = set()
+
+    for source_id in source_ids:
+        if source_id in seen:
+            duplicate_source_ids.append(source_id)
+            continue
+        seen.add(source_id)
+        normalized_source_ids.append(source_id)
+
+    return tuple(normalized_source_ids), tuple(duplicate_source_ids)
