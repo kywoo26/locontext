@@ -15,6 +15,12 @@ Local-first context engine for docs grounding.
 - Clear engine boundary so indexing/query can move to Rust later without rewriting the whole app.
 - Start narrow: ingest, query, list/status, remove, config, and one agent integration path.
 
+## Current machine-facing path
+
+- The first thin machine-facing path is `locontext query --json`.
+- It stays local-only and transport-agnostic.
+- Broader MCP or server transport remains deferred.
+
 ## Out of scope for v1
 
 - Obsidian integration
