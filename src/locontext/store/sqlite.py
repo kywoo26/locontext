@@ -399,6 +399,13 @@ class SQLiteStore:
         )
         self._connection.commit()
 
+    def mark_snapshot_stale(self, snapshot_id: str) -> None:
+        _ = self._connection.execute(
+            "UPDATE snapshots SET status = ? WHERE snapshot_id = ?",
+            (SnapshotStatus.STALE.value, snapshot_id),
+        )
+        self._connection.commit()
+
     def delete_source(self, source_id: str) -> bool:
         cursor = self._connection.execute(
             "DELETE FROM sources WHERE source_id = ?", (source_id,)
