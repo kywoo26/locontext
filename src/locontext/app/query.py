@@ -17,10 +17,16 @@ class _EngineModule(Protocol):
     SQLiteLexicalEngine: _QueryEngineFactory
 
 
-def query_local(store: SQLiteStore, text: str, *, limit: int) -> list[QueryHit]:
+def query_local(
+    store: SQLiteStore,
+    text: str,
+    *,
+    limit: int,
+    source_id: str | None = None,
+) -> list[QueryHit]:
     module = cast(
         _EngineModule,
         cast(object, import_module("locontext.engine.sqlite_lexical")),
     )
     engine = module.SQLiteLexicalEngine(store.connection)
-    return list(engine.query(text, limit=limit))
+    return list(engine.query(text, limit=limit, source_id=source_id))

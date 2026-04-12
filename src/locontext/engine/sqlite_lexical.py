@@ -36,13 +36,19 @@ class SQLiteLexicalEngine:
             )
         self._store.replace_snapshot_chunks(snapshot.snapshot_id, chunks)
 
-    def query(self, text: str, *, limit: int) -> list[QueryHit]:
+    def query(
+        self,
+        text: str,
+        *,
+        limit: int,
+        source_id: str | None = None,
+    ) -> list[QueryHit]:
         if limit <= 0:
             return []
         match_query = _plain_text_match_query(text)
         if match_query is None:
             return []
-        return self._store.search_chunks(match_query, limit=limit)
+        return self._store.search_chunks(match_query, limit=limit, source_id=source_id)
 
     def remove_source(self, source_id: str) -> None:
         _ = self._store.delete_source(source_id)

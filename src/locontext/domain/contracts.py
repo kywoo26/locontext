@@ -28,6 +28,12 @@ class IndexingEngine(Protocol):
 
 
 class QueryEngine(Protocol):
-    def query(self, text: str, *, limit: int) -> Sequence[QueryHit]:
-        """Search locally indexed snapshot content."""
+    def query(
+        self,
+        text: str,
+        *,
+        limit: int,
+        source_id: str | None = None,
+    ) -> list[QueryHit]:
+        """Return local query hits for the active snapshot set."""
         ...
