@@ -110,6 +110,7 @@ class SourceRefreshCommandTest(unittest.TestCase):
                 [
                     f"refreshed source: {source_id}",
                     "result: changed",
+                    "freshness: current",
                     f"active snapshot: {snapshot_id}",
                     "documents: 1",
                 ],
@@ -157,6 +158,7 @@ class SourceRefreshCommandTest(unittest.TestCase):
                 [
                     f"refreshed source: {source_id}",
                     "result: unchanged",
+                    "freshness: current",
                     f"active snapshot: {snapshot_id}",
                     "documents: 1",
                 ],

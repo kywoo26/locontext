@@ -100,6 +100,18 @@ class SourceCommandTest(unittest.TestCase):
             self.assertEqual(result.exit_code, 0)
             self.assertEqual(result.output, "No sources registered.\n")
 
+    def test_source_status_reports_freshness_for_unrefreshed_source(self) -> None:
+        with self.runner.isolated_filesystem():
+            add_result = self.runner.invoke(
+                main, ["source", "add", "https://docs.example.com/docs"]
+            )
+            self.assertEqual(add_result.exit_code, 0)
+
+            result = self.runner.invoke(main, ["source", "status"])
+
+            self.assertEqual(result.exit_code, 0)
+            self.assertIn("freshness=never-refreshed", result.output)
+
     def test_source_show_reports_missing_source(self) -> None:
         with self.runner.isolated_filesystem():
             result = self.runner.invoke(main, ["source", "show", "missing-id"])

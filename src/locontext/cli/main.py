@@ -99,6 +99,7 @@ def source_refresh(source_id: str) -> None:
 
     click.echo(f"refreshed source: {result.source_id}")
     click.echo(f"result: {'changed' if result.changed else 'unchanged'}")
+    click.echo(f"freshness: {result.freshness_state}")
     click.echo(f"active snapshot: {result.snapshot_id}")
     click.echo(f"documents: {result.document_count}")
 
@@ -167,7 +168,7 @@ def source_status() -> None:
         line = (
             f"{status.source_id} {status.canonical_locator} snapshot={snapshot_id} "
             f"status={snapshot_status} documents={status.document_count} "
-            f"chunks={status.chunk_count} fetched_at={fetched_at}"
+            f"chunks={status.chunk_count} fetched_at={fetched_at} freshness={status.freshness_state}"
         )
         click.echo(line)
 
@@ -195,6 +196,8 @@ def source_show(source_id: str) -> None:
     click.echo(f"document_count: {status.document_count}")
     click.echo(f"chunk_count: {status.chunk_count}")
     click.echo(f"fetched_at: {status.fetched_at or 'none'}")
+    click.echo(f"freshness: {status.freshness_state}")
+    click.echo(f"freshness_reason: {status.freshness_reason}")
     click.echo(f"etag: {status.etag or 'none'}")
     click.echo(f"last_modified: {status.last_modified or 'none'}")
 
