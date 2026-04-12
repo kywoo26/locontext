@@ -10,7 +10,10 @@ import click
 from .. import __version__
 from ..app.refresh import RefreshOrchestrator
 from ..app.sources import (
+    create_source_set,
+    get_source_set,
     get_source_status,
+    list_source_sets,
     list_source_status,
     list_sources,
     register_source,
@@ -34,6 +37,11 @@ def main() -> None:
 @main.group()
 def source() -> None:
     """Manage registered documentation sources."""
+
+
+@main.group("source-set")
+def source_set() -> None:
+    """Manage named source sets."""
 
 
 @source.command("add")
@@ -215,6 +223,75 @@ def source_reindex(source_id: str) -> None:
     click.echo(f"reindexed source: {result.source_id}")
     click.echo(f"active snapshot: {result.snapshot_id}")
     click.echo(f"documents: {result.document_count}")
+
+
+@source_set.command("add")
+@click.argument("set_name")
+@click.argument("source_ids", nargs=-1)
+def source_set_add(set_name: str, source_ids: tuple[str, ...]) -> None:
+    if not source_ids:
+        raise click.UsageError("Missing source IDs.")
+
+    runtime = open_runtime()
+    try:
+        try:
+            result = create_source_set(runtime.store, set_name, list(source_ids))
+        except KeyError as exc:
+            click.echo(exc.args[0] if exc.args else str(exc))
+            return
+    finally:
+        runtime.close()
+
+    status = "created" if result.created else "updated"
+    click.echo(f"{status} source set: {result.source_set.set_name}")
+    click.echo(
+        "source_ids: "
+        + ", ".join(member.source_id for member in result.source_set.members)
+    )
+
+
+@source_set.command("list")
+def source_set_list() -> None:
+    runtime = open_runtime()
+    try:
+        source_sets = list_source_sets(runtime.store)
+    finally:
+        runtime.close()
+
+    if not source_sets:
+        click.echo("No source sets registered.")
+        return
+
+    for index, source_set_result in enumerate(source_sets):
+        if index > 0:
+            click.echo("")
+        click.echo(f"set_name: {source_set_result.set_name}")
+        click.echo(
+            "source_ids: "
+            + ", ".join(member.source_id for member in source_set_result.members)
+        )
+
+
+@source_set.command("show")
+@click.argument("set_name")
+def source_set_show(set_name: str) -> None:
+    runtime = open_runtime()
+    try:
+        source_set_result = get_source_set(runtime.store, set_name)
+    finally:
+        runtime.close()
+
+    if source_set_result is None:
+        click.echo(f"source set not found: {set_name}")
+        return
+
+    click.echo(f"set_name: {source_set_result.set_name}")
+    click.echo(f"member_count: {len(source_set_result.members)}")
+    click.echo("members:")
+    for member in source_set_result.members:
+        click.echo(
+            f"  - [{member.member_index}] {member.source_id} {member.canonical_locator}"
+        )
 
 
 @main.command()
