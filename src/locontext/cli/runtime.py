@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..config.settings import Settings, load_settings
+from ..store.migration_runner import apply_migrations
 from ..store.sqlite import SQLiteStore
 
 
@@ -27,7 +28,7 @@ def open_runtime(project_root: Path | None = None) -> Runtime:
     db_path = settings.data_dir / "locontext.db"
     connection = sqlite3.connect(db_path)
     store = SQLiteStore(connection)
-    store.ensure_schema()
+    apply_migrations(connection)
     return Runtime(
         project_root=resolved_root,
         settings=settings,
