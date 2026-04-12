@@ -364,12 +364,15 @@ class SQLiteStore:
         )
         self._connection.commit()
 
-    def delete_source(self, source_id: str) -> None:
-        _ = self._connection.execute(
+    def delete_source(self, source_id: str) -> bool:
+        cursor = self._connection.execute(
             "DELETE FROM sources WHERE source_id = ?", (source_id,)
         )
-        self._rebuild_chunk_fts()
+        removed = cursor.rowcount > 0
+        if removed:
+            self._rebuild_chunk_fts()
         self._connection.commit()
+        return removed
 
     def _rebuild_chunk_fts(self) -> None:
         _ = self._connection.execute(

@@ -15,6 +15,12 @@ class SourceRegistrationResult:
     created: bool
 
 
+@dataclass(slots=True)
+class SourceRemovalResult:
+    source_id: str
+    removed: bool
+
+
 def register_source(
     store: SQLiteStore, requested_locator: str
 ) -> SourceRegistrationResult:
@@ -40,3 +46,8 @@ def register_source(
 
 def list_sources(store: SQLiteStore) -> list[Source]:
     return store.list_sources()
+
+
+def remove_source(store: SQLiteStore, source_id: str) -> SourceRemovalResult:
+    removed = store.delete_source(source_id)
+    return SourceRemovalResult(source_id=source_id, removed=removed)

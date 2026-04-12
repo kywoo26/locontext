@@ -10,8 +10,7 @@ from locontext.cli.main import main
 
 
 class SourceCommandTest(unittest.TestCase):
-    def setUp(self) -> None:
-        self.runner = CliRunner()
+    runner: CliRunner = CliRunner()
 
     def test_source_add_creates_default_local_db(self) -> None:
         with self.runner.isolated_filesystem():
@@ -66,6 +65,33 @@ class SourceCommandTest(unittest.TestCase):
             self.assertEqual(len(lines), 2)
             self.assertIn("https://docs.example.com/docs/alpha", lines[0])
             self.assertIn("https://docs.example.com/docs/beta", lines[1])
+
+    def test_source_remove_reports_removed_source(self) -> None:
+        with self.runner.isolated_filesystem():
+            add_result = self.runner.invoke(
+                main, ["source", "add", "https://docs.example.com/docs"]
+            )
+            self.assertEqual(add_result.exit_code, 0)
+            source_id = add_result.output.splitlines()[0].split()[-1]
+
+            result = self.runner.invoke(main, ["source", "remove", source_id])
+
+            self.assertEqual(result.exit_code, 0)
+            self.assertEqual(result.output, f"removed source: {source_id}\n")
+
+    def test_source_remove_reports_missing_source(self) -> None:
+        with self.runner.isolated_filesystem():
+            result = self.runner.invoke(main, ["source", "remove", "missing-id"])
+
+            self.assertEqual(result.exit_code, 0)
+            self.assertEqual(result.output, "source not found: missing-id\n")
+
+    def test_source_remove_help_works(self) -> None:
+        with self.runner.isolated_filesystem():
+            result = self.runner.invoke(main, ["source", "remove", "--help"])
+
+            self.assertEqual(result.exit_code, 0)
+            self.assertIn("Remove a registered documentation source.", result.output)
 
     def test_source_add_honors_custom_data_dir(self) -> None:
         with self.runner.isolated_filesystem():

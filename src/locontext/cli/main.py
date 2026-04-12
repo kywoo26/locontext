@@ -8,7 +8,7 @@ import click
 
 from .. import __version__
 from ..app.refresh import RefreshOrchestrator
-from ..app.sources import list_sources, register_source
+from ..app.sources import list_sources, register_source, remove_source
 from ..domain.models import DiscoveredDocument, QueryHit, Source
 from ..store.sqlite import SQLiteStore
 from .runtime import open_runtime
@@ -61,6 +61,23 @@ def source_list() -> None:
             f"{registered_source.source_id} {registered_source.canonical_locator} -> "
             + registered_source.docset_root
         )
+
+
+@source.command("remove")
+@click.argument("source_id")
+def source_remove(source_id: str) -> None:
+    """Remove a registered documentation source."""
+    runtime = open_runtime()
+    try:
+        result = remove_source(runtime.store, source_id)
+    finally:
+        runtime.close()
+
+    if result.removed:
+        click.echo(f"removed source: {result.source_id}")
+        return
+
+    click.echo(f"source not found: {result.source_id}")
 
 
 @source.command("refresh")
