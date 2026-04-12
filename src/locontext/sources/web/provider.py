@@ -40,6 +40,7 @@ class WebDiscoveryProvider:
                 metadata={
                     "status_code": page.status_code,
                     "content_type": page.content_type,
+                    "extracted_text": extracted.text,
                 },
             )
         ]
