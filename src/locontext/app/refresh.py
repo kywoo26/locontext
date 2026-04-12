@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from dataclasses import dataclass
 from hashlib import sha256
 from importlib import import_module
@@ -33,7 +34,7 @@ class RefreshOrchestrator:
     ) -> None:
         self._store = store
         self._discovery_provider = discovery_provider or _default_discovery_provider()
-        self._indexing_engine = indexing_engine or _default_indexing_engine()
+        self._indexing_engine = indexing_engine or _default_indexing_engine(store)
 
     def refresh_source(self, source_id: str) -> RefreshResult:
         source = self._require_source(source_id)
@@ -126,8 +127,12 @@ class _WebProviderModule(Protocol):
     WebDiscoveryProvider: type[DiscoveryProvider]
 
 
+class _IndexingEngineFactory(Protocol):
+    def __call__(self, connection: sqlite3.Connection) -> IndexingEngine: ...
+
+
 class _EngineModule(Protocol):
-    NoopIndexingEngine: type[IndexingEngine]
+    SQLiteLexicalEngine: _IndexingEngineFactory
 
 
 def _default_discovery_provider() -> DiscoveryProvider:
@@ -138,9 +143,9 @@ def _default_discovery_provider() -> DiscoveryProvider:
     return module.WebDiscoveryProvider()
 
 
-def _default_indexing_engine() -> IndexingEngine:
+def _default_indexing_engine(store: SQLiteStore) -> IndexingEngine:
     module = cast(
         _EngineModule,
-        cast(object, import_module("locontext.engine.noop")),
+        cast(object, import_module("locontext.engine.sqlite_lexical")),
     )
-    return module.NoopIndexingEngine()
+    return module.SQLiteLexicalEngine(store.connection)

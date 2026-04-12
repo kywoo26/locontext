@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Protocol
 
-from .models import DiscoveredDocument, Document, Snapshot, Source
+from .models import DiscoveredDocument, Document, QueryHit, Snapshot, Source
 
 
 class DiscoveryProvider(Protocol):
@@ -24,4 +24,10 @@ class IndexingEngine(Protocol):
 
     def remove_source(self, source_id: str) -> None:
         """Delete indexed content for a source."""
+        ...
+
+
+class QueryEngine(Protocol):
+    def query(self, text: str, *, limit: int) -> Sequence[QueryHit]:
+        """Search locally indexed snapshot content."""
         ...
