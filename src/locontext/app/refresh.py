@@ -20,6 +20,8 @@ class RefreshResult:
     snapshot_id: str | None
     changed: bool
     document_count: int
+    freshness_state: str
+    freshness_reason: str
 
 
 class RefreshOrchestrator:
@@ -54,6 +56,8 @@ class RefreshOrchestrator:
                 snapshot_id=active_snapshot.snapshot_id,
                 changed=False,
                 document_count=len(documents),
+                freshness_state="current",
+                freshness_reason="active snapshot is current",
             )
 
         snapshot = Snapshot(
@@ -81,6 +85,8 @@ class RefreshOrchestrator:
             snapshot_id=snapshot.snapshot_id,
             changed=True,
             document_count=len(documents),
+            freshness_state="current",
+            freshness_reason="active snapshot is current",
         )
 
     def reindex_source(self, source_id: str) -> RefreshResult:
@@ -96,6 +102,8 @@ class RefreshOrchestrator:
             snapshot_id=snapshot.snapshot_id,
             changed=False,
             document_count=len(documents),
+            freshness_state=_freshness_state(snapshot).code,
+            freshness_reason=_freshness_state(snapshot).reason,
         )
 
     def remove_source(self, source_id: str) -> None:
@@ -123,6 +131,34 @@ def _manifest_hash(documents: list[DiscoveredDocument]) -> str:
         for document in documents
     )
     return sha256(payload.encode("utf-8")).hexdigest()
+
+
+@dataclass(slots=True, frozen=True)
+class FreshnessState:
+    code: str
+    reason: str
+
+
+def get_freshness_state(store: SQLiteStore, source_id: str) -> FreshnessState:
+    snapshot = store.get_active_snapshot(source_id)
+    if snapshot is None:
+        return FreshnessState(
+            code="never-refreshed",
+            reason="source has never been refreshed",
+        )
+    return _freshness_state(snapshot)
+
+
+def _freshness_state(snapshot: Snapshot) -> FreshnessState:
+    if snapshot.status is SnapshotStatus.STALE:
+        return FreshnessState(
+            code="stale-advisory",
+            reason="active snapshot is stale until manually refreshed",
+        )
+    return FreshnessState(
+        code="current",
+        reason="active snapshot is current",
+    )
 
 
 class _WebProviderModule(Protocol):
