@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from importlib import import_module
+from typing import Protocol, cast
 
 import click
 
 from .. import __version__
 from ..app.refresh import RefreshOrchestrator
 from ..app.sources import list_sources, register_source
-from ..domain.models import DiscoveredDocument, Source
+from ..domain.models import DiscoveredDocument, QueryHit, Source
+from ..store.sqlite import SQLiteStore
 from .runtime import open_runtime
 
 
@@ -82,6 +85,12 @@ class _NoDiscoveryProvider:
         raise RuntimeError("source reindex does not perform discovery")
 
 
+class _QueryModule(Protocol):
+    def query_local(
+        self, store: SQLiteStore, text: str, *, limit: int
+    ) -> list[QueryHit]: ...
+
+
 @source.command("reindex")
 @click.argument("source_id")
 def source_reindex(source_id: str) -> None:
@@ -95,6 +104,48 @@ def source_reindex(source_id: str) -> None:
     click.echo(f"reindexed source: {result.source_id}")
     click.echo(f"active snapshot: {result.snapshot_id}")
     click.echo(f"documents: {result.document_count}")
+
+
+@main.command()
+@click.argument("text", nargs=-1)
+@click.option("--limit", default=5, show_default=True, type=click.IntRange(min=1))
+def query(text: Sequence[str], limit: int) -> None:
+    query_text = " ".join(text).strip()
+    if not query_text:
+        raise click.UsageError("Missing query text.")
+
+    runtime = open_runtime()
+    try:
+        module = cast(_QueryModule, cast(object, import_module("locontext.app.query")))
+        hits = module.query_local(runtime.store, query_text, limit=limit)
+        source_cache: dict[str, str] = {}
+        document_cache: dict[str, dict[str, str]] = {}
+        for hit in hits:
+            if hit.source_id not in source_cache:
+                source = runtime.store.get_source(hit.source_id)
+                source_cache[hit.source_id] = (
+                    source.canonical_locator if source is not None else hit.source_id
+                )
+            if hit.snapshot_id not in document_cache:
+                document_cache[hit.snapshot_id] = {
+                    document.document_id: document.canonical_locator
+                    for document in runtime.store.list_documents(hit.snapshot_id)
+                }
+    finally:
+        runtime.close()
+
+    if not hits:
+        click.echo("No query results.")
+        return
+
+    for index, hit in enumerate(hits, start=1):
+        source_locator = source_cache[hit.source_id]
+        document_locator = document_cache.get(hit.snapshot_id, {}).get(hit.document_id)
+        if document_locator is None:
+            document_locator = hit.document_id
+        click.echo(f"{index}. {source_locator}")
+        click.echo(f"   document: {document_locator}")
+        click.echo(f"   chunk: {hit.text}")
 
 
 if __name__ == "__main__":
