@@ -6,8 +6,10 @@ from pathlib import Path
 from typing import Final, cast
 
 from ..domain.models import (
+    Chunk,
     DiscoveredDocument,
     Document,
+    QueryHit,
     Snapshot,
     SnapshotStatus,
     Source,
@@ -26,6 +28,10 @@ class SQLiteStore:
         schema_path = Path(__file__).with_name("schema.sql")
         _ = self._connection.executescript(schema_path.read_text(encoding="utf-8"))
         self._connection.commit()
+
+    @property
+    def connection(self) -> sqlite3.Connection:
+        return self._connection
 
     def upsert_source(self, source: Source) -> None:
         _ = self._connection.execute(
@@ -258,6 +264,84 @@ class SQLiteStore:
             for row in rows
         ]
 
+    def replace_snapshot_chunks(self, snapshot_id: str, chunks: list[Chunk]) -> None:
+        _ = self._connection.execute(
+            "DELETE FROM chunks WHERE snapshot_id = ?",
+            (snapshot_id,),
+        )
+        for chunk in chunks:
+            _ = self._connection.execute(
+                """
+                INSERT INTO chunks (
+                    chunk_id,
+                    source_id,
+                    snapshot_id,
+                    document_id,
+                    chunk_index,
+                    text,
+                    metadata_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    chunk.chunk_id,
+                    chunk.source_id,
+                    chunk.snapshot_id,
+                    chunk.document_id,
+                    chunk.chunk_index,
+                    chunk.text,
+                    json.dumps(chunk.metadata, sort_keys=True),
+                ),
+            )
+        self._rebuild_chunk_fts()
+        self._connection.commit()
+
+    def search_chunks(self, match_query: str, *, limit: int) -> list[QueryHit]:
+        rows = cast(
+            list[sqlite3.Row],
+            self._connection.execute(
+                """
+                SELECT
+                    chunks.source_id,
+                    chunks.snapshot_id,
+                    chunks.document_id,
+                    chunks.chunk_id,
+                    chunks.chunk_index,
+                    chunks.text,
+                    chunks.metadata_json,
+                    bm25(chunk_fts) AS score
+                FROM chunk_fts
+                JOIN chunks ON chunks.rowid = chunk_fts.rowid
+                JOIN snapshots ON snapshots.snapshot_id = chunks.snapshot_id
+                WHERE chunk_fts MATCH ?
+                  AND snapshots.is_active = 1
+                ORDER BY
+                    score ASC,
+                    chunks.source_id ASC,
+                    chunks.snapshot_id ASC,
+                    chunks.document_id ASC,
+                    chunks.chunk_index ASC
+                LIMIT ?
+                """,
+                (match_query, limit),
+            ).fetchall(),
+        )
+        return [
+            QueryHit(
+                source_id=cast(str, row["source_id"]),
+                snapshot_id=cast(str, row["snapshot_id"]),
+                document_id=cast(str, row["document_id"]),
+                chunk_id=cast(str, row["chunk_id"]),
+                chunk_index=cast(int, row["chunk_index"]),
+                text=cast(str, row["text"]),
+                score=float(cast(int | float, row["score"])),
+                metadata=cast(
+                    dict[str, object],
+                    json.loads(cast(str, row["metadata_json"]) or "{}"),
+                ),
+            )
+            for row in rows
+        ]
+
     def activate_snapshot(self, source_id: str, snapshot_id: str) -> None:
         _ = self._connection.execute(
             "UPDATE snapshots SET is_active = 0 WHERE source_id = ?",
@@ -284,7 +368,13 @@ class SQLiteStore:
         _ = self._connection.execute(
             "DELETE FROM sources WHERE source_id = ?", (source_id,)
         )
+        self._rebuild_chunk_fts()
         self._connection.commit()
+
+    def _rebuild_chunk_fts(self) -> None:
+        _ = self._connection.execute(
+            "INSERT INTO chunk_fts(chunk_fts) VALUES ('rebuild')"
+        )
 
 
 def _snapshot_from_row(row: sqlite3.Row) -> Snapshot:
