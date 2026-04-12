@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from pathlib import Path
 from typing import Final, cast
 
 from ..domain.models import (
@@ -15,6 +14,7 @@ from ..domain.models import (
     Source,
     SourceKind,
 )
+from .migrations import apply_migrations
 
 
 class SQLiteStore:
@@ -25,9 +25,7 @@ class SQLiteStore:
         self._connection.row_factory = sqlite3.Row
 
     def ensure_schema(self) -> None:
-        schema_path = Path(__file__).with_name("schema.sql")
-        _ = self._connection.executescript(schema_path.read_text(encoding="utf-8"))
-        self._connection.commit()
+        apply_migrations(self._connection)
 
     @property
     def connection(self) -> sqlite3.Connection:
