@@ -174,6 +174,30 @@ class SQLiteStore:
             return None
         return _snapshot_from_row(row)
 
+    def count_documents(self, snapshot_id: str) -> int:
+        row = cast(
+            tuple[int] | None,
+            self._connection.execute(
+                "SELECT COUNT(*) FROM documents WHERE snapshot_id = ?",
+                (snapshot_id,),
+            ).fetchone(),
+        )
+        if row is None:
+            return 0
+        return row[0]
+
+    def count_chunks(self, snapshot_id: str) -> int:
+        row = cast(
+            tuple[int] | None,
+            self._connection.execute(
+                "SELECT COUNT(*) FROM chunks WHERE snapshot_id = ?",
+                (snapshot_id,),
+            ).fetchone(),
+        )
+        if row is None:
+            return 0
+        return row[0]
+
     def replace_snapshot_documents(
         self,
         snapshot_id: str,
