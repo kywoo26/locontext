@@ -39,6 +39,24 @@ def filter_and_order_discovered_documents(
     return sorted(deduped.values(), key=_sort_key)
 
 
+def filter_and_order_discovered_locators(
+    source: Source,
+    candidates: Sequence[str],
+) -> list[str]:
+    ordered = filter_and_order_discovered_documents(
+        source,
+        [
+            DiscoveredDocument(
+                requested_locator=candidate,
+                resolved_locator=candidate,
+                canonical_locator=candidate,
+            )
+            for candidate in candidates
+        ],
+    )
+    return [document.canonical_locator for document in ordered]
+
+
 def _sort_key(document: DiscoveredDocument) -> tuple[int, str, str]:
     parsed = urlparse(document.canonical_locator)
     stripped_path = parsed.path.strip("/")
