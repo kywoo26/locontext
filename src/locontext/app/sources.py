@@ -7,6 +7,7 @@ from uuid import uuid4
 from ..domain.models import SnapshotStatus, Source, SourceKind
 from ..sources.web.canonicalize import canonicalize_locator, infer_docset_root
 from ..store.sqlite import SQLiteStore
+from .refresh import get_freshness_state
 
 
 @dataclass(slots=True)
@@ -33,6 +34,8 @@ class SourceStatusResult:
     fetched_at: str | None
     etag: str | None
     last_modified: str | None
+    freshness_state: str
+    freshness_reason: str
 
 
 def register_source(
@@ -96,7 +99,10 @@ def _source_status_from_source(
             fetched_at=None,
             etag=None,
             last_modified=None,
+            freshness_state="never-refreshed",
+            freshness_reason="source has never been refreshed",
         )
+    freshness = get_freshness_state(store, source.source_id)
     return SourceStatusResult(
         source_id=source.source_id,
         canonical_locator=source.canonical_locator,
@@ -108,4 +114,6 @@ def _source_status_from_source(
         fetched_at=active_snapshot.fetched_at,
         etag=active_snapshot.etag,
         last_modified=active_snapshot.last_modified,
+        freshness_state=freshness.code,
+        freshness_reason=freshness.reason,
     )

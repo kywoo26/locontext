@@ -54,6 +54,10 @@ class SourceStatusTest(unittest.TestCase):
         )
         self.assertEqual([status.snapshot_status for status in statuses], [None, None])
         self.assertEqual([status.fetched_at for status in statuses], [None, None])
+        self.assertEqual(
+            [status.freshness_state for status in statuses],
+            ["never-refreshed", "never-refreshed"],
+        )
 
     def test_get_source_status_reports_active_snapshot_counts(self) -> None:
         source = self._add_source("source-1", "https://docs.example.com/docs")
@@ -104,6 +108,7 @@ class SourceStatusTest(unittest.TestCase):
         self.assertEqual(status.document_count, 1)
         self.assertEqual(status.chunk_count, 1)
         self.assertEqual(status.fetched_at, "2026-04-12T00:00:00+00:00")
+        self.assertEqual(status.freshness_state, "current")
 
     def test_get_source_status_returns_none_for_missing_source(self) -> None:
         self.assertIsNone(get_source_status(self.store, "missing-source"))
