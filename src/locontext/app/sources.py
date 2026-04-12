@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from ..domain.models import Source, SourceKind
+from ..domain.models import SnapshotStatus, Source, SourceKind
 from ..sources.web.canonicalize import canonicalize_locator, infer_docset_root
 from ..store.sqlite import SQLiteStore
 
@@ -19,6 +19,20 @@ class SourceRegistrationResult:
 class SourceRemovalResult:
     source_id: str
     removed: bool
+
+
+@dataclass(slots=True)
+class SourceStatusResult:
+    source_id: str
+    canonical_locator: str
+    docset_root: str
+    active_snapshot_id: str | None
+    snapshot_status: SnapshotStatus | None
+    document_count: int
+    chunk_count: int
+    fetched_at: str | None
+    etag: str | None
+    last_modified: str | None
 
 
 def register_source(
@@ -51,3 +65,47 @@ def list_sources(store: SQLiteStore) -> list[Source]:
 def remove_source(store: SQLiteStore, source_id: str) -> SourceRemovalResult:
     removed = store.delete_source(source_id)
     return SourceRemovalResult(source_id=source_id, removed=removed)
+
+
+def list_source_status(store: SQLiteStore) -> list[SourceStatusResult]:
+    return [
+        _source_status_from_source(store, source) for source in store.list_sources()
+    ]
+
+
+def get_source_status(store: SQLiteStore, source_id: str) -> SourceStatusResult | None:
+    source = store.get_source(source_id)
+    if source is None:
+        return None
+    return _source_status_from_source(store, source)
+
+
+def _source_status_from_source(
+    store: SQLiteStore, source: Source
+) -> SourceStatusResult:
+    active_snapshot = store.get_active_snapshot(source.source_id)
+    if active_snapshot is None:
+        return SourceStatusResult(
+            source_id=source.source_id,
+            canonical_locator=source.canonical_locator,
+            docset_root=source.docset_root,
+            active_snapshot_id=None,
+            snapshot_status=None,
+            document_count=0,
+            chunk_count=0,
+            fetched_at=None,
+            etag=None,
+            last_modified=None,
+        )
+    return SourceStatusResult(
+        source_id=source.source_id,
+        canonical_locator=source.canonical_locator,
+        docset_root=source.docset_root,
+        active_snapshot_id=active_snapshot.snapshot_id,
+        snapshot_status=active_snapshot.status,
+        document_count=store.count_documents(active_snapshot.snapshot_id),
+        chunk_count=store.count_chunks(active_snapshot.snapshot_id),
+        fetched_at=active_snapshot.fetched_at,
+        etag=active_snapshot.etag,
+        last_modified=active_snapshot.last_modified,
+    )

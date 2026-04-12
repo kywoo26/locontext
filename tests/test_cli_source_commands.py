@@ -93,6 +93,20 @@ class SourceCommandTest(unittest.TestCase):
             self.assertEqual(result.exit_code, 0)
             self.assertIn("Remove a registered documentation source.", result.output)
 
+    def test_source_status_reports_empty_state(self) -> None:
+        with self.runner.isolated_filesystem():
+            result = self.runner.invoke(main, ["source", "status"])
+
+            self.assertEqual(result.exit_code, 0)
+            self.assertEqual(result.output, "No sources registered.\n")
+
+    def test_source_show_reports_missing_source(self) -> None:
+        with self.runner.isolated_filesystem():
+            result = self.runner.invoke(main, ["source", "show", "missing-id"])
+
+            self.assertEqual(result.exit_code, 0)
+            self.assertEqual(result.output, "source not found: missing-id\n")
+
     def test_source_add_honors_custom_data_dir(self) -> None:
         with self.runner.isolated_filesystem():
             Path("locontext.toml").write_text(

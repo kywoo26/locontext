@@ -99,6 +99,10 @@ class RefreshOrchestratorTest(unittest.TestCase):
         self.assertEqual(len(engine.reindex_calls), 1)
         if first.snapshot_id is None:
             self.fail("expected a snapshot id")
+        active = self.store.get_active_snapshot("source-1")
+        if active is None:
+            self.fail("expected an active snapshot")
+        self.assertIsNotNone(active.fetched_at)
         stored_documents = self.store.list_documents(first.snapshot_id)
         self.assertEqual(len(stored_documents), 1)
         self.assertEqual(stored_documents[0].title, "Intro")
