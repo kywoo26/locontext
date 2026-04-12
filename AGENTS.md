@@ -50,7 +50,7 @@ uv run locontext --help
 - Keep business logic out of the CLI layer.
 - Prefer stdlib/dataclasses/protocols in core layers unless a library clearly reduces real complexity.
 - Keep tests local and deterministic by default.
-- Treat `uv run pytest` as the fast unit-test loop; run integration tests explicitly before opening a PR.
+- Treat `uv run pytest` as the fast unit-test loop; run integration tests explicitly with `uv run pytest --override-ini addopts="-ra --import-mode=importlib" -m integration` before opening a PR.
 - Use integration tests for real heavy engines, subprocess/thread/server lifecycle, real network or DB services, benchmark-sized fixtures, or timing-sensitive behavior.
 
 ## Ask First
@@ -75,8 +75,8 @@ uv run locontext --help
 | CLI surface | `uv run locontext --help && uv run ruff check src/locontext tests && uv run ty check` |
 | Source / refresh / store logic | `uv run pytest && uv run ty check && uv run ruff check src/locontext tests` |
 | Tests / fixtures | `uv run pytest && uv run ruff check src/locontext tests` |
-| Integration check | `uv run pytest -m integration` |
-| PR preflight | `uv run ruff check src/locontext tests && uv run ruff format --check src/locontext tests && uv run ty check && uv run pytest && uv run pytest -m integration && uv run python -m compileall src tests` |
+| Integration check | `uv run pytest --override-ini addopts="-ra --import-mode=importlib" -m integration` |
+| PR preflight | `uv run ruff check src/locontext tests && uv run ruff format --check src/locontext tests && uv run ty check && uv run pytest && uv run pytest --override-ini addopts="-ra --import-mode=importlib" -m integration && uv run python -m compileall src tests` |
 
 ## Path Contract
 

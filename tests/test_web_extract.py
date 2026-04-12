@@ -23,6 +23,31 @@ class WebExtractTest(unittest.TestCase):
 
         self.assertEqual(extracted.title, "Guide")
         self.assertEqual(extracted.text, "Hello world")
+        self.assertEqual(extracted.linked_locators, ())
+
+    def test_extracts_http_links_in_document_order(self) -> None:
+        page = FetchedWebPage(
+            requested_locator="https://example.com/guide",
+            resolved_locator="https://example.com/guide",
+            status_code=200,
+            headers={"content-type": "text/html; charset=utf-8"},
+            content=(
+                b"<html><body>"
+                b'<a href="/docs/start">Start</a>'
+                b'<a href="#section">Section</a>'
+                b'<a href="https://example.com/docs/next">Next</a>'
+                b'<a href="mailto:test@example.com">Email</a>'
+                b'<a href="/docs/start">Duplicate</a>'
+                b"</body></html>"
+            ),
+        )
+
+        extracted = extract_web_content(page)
+
+        self.assertEqual(
+            extracted.linked_locators,
+            ("/docs/start", "https://example.com/docs/next"),
+        )
 
     def test_extracts_plain_text_without_title(self) -> None:
         page = FetchedWebPage(
@@ -37,6 +62,7 @@ class WebExtractTest(unittest.TestCase):
 
         self.assertIsNone(extracted.title)
         self.assertEqual(extracted.text, "Line 1 Line 2")
+        self.assertEqual(extracted.linked_locators, ())
 
 
 if __name__ == "__main__":
