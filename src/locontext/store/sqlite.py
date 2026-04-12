@@ -13,6 +13,8 @@ from ..domain.models import (
     SnapshotStatus,
     Source,
     SourceKind,
+    SourceSet,
+    SourceSetMember,
 )
 from .migrations import apply_migrations
 
@@ -134,6 +136,119 @@ class SQLiteStore:
             )
             for row in rows
         ]
+
+    def create_source_set(
+        self,
+        source_set_id: str,
+        set_name: str,
+        source_ids: list[str],
+    ) -> SourceSet:
+        with self._connection:
+            _ = self._connection.execute(
+                """
+                INSERT INTO source_sets (source_set_id, set_name)
+                VALUES (?, ?)
+                ON CONFLICT(source_set_id) DO UPDATE SET
+                    set_name = excluded.set_name
+                """,
+                (source_set_id, set_name),
+            )
+            _ = self._connection.execute(
+                "DELETE FROM source_set_members WHERE source_set_id = ?",
+                (source_set_id,),
+            )
+            for member_index, source_id in enumerate(source_ids):
+                _ = self._connection.execute(
+                    """
+                    INSERT INTO source_set_members (
+                        source_set_id,
+                        source_id,
+                        member_index
+                    ) VALUES (?, ?, ?)
+                    """,
+                    (source_set_id, source_id, member_index),
+                )
+        return self.get_source_set_by_id(source_set_id) or SourceSet(
+            source_set_id=source_set_id,
+            set_name=set_name,
+        )
+
+    def list_source_sets(self) -> list[SourceSet]:
+        rows = cast(
+            list[sqlite3.Row],
+            self._connection.execute(
+                """
+                SELECT source_set_id, set_name
+                FROM source_sets
+                ORDER BY set_name ASC, source_set_id ASC
+                """
+            ).fetchall(),
+        )
+        source_sets: list[SourceSet] = []
+        for row in rows:
+            source_set = self.get_source_set_by_id(cast(str, row["source_set_id"]))
+            if source_set is not None:
+                source_sets.append(source_set)
+        return source_sets
+
+    def get_source_set(self, set_name: str) -> SourceSet | None:
+        row = cast(
+            sqlite3.Row | None,
+            self._connection.execute(
+                """
+                SELECT source_set_id, set_name
+                FROM source_sets
+                WHERE set_name = ?
+                """,
+                (set_name,),
+            ).fetchone(),
+        )
+        if row is None:
+            return None
+        return self.get_source_set_by_id(cast(str, row["source_set_id"]))
+
+    def get_source_set_by_id(self, source_set_id: str) -> SourceSet | None:
+        set_row = cast(
+            sqlite3.Row | None,
+            self._connection.execute(
+                """
+                SELECT source_set_id, set_name
+                FROM source_sets
+                WHERE source_set_id = ?
+                """,
+                (source_set_id,),
+            ).fetchone(),
+        )
+        if set_row is None:
+            return None
+        member_rows = cast(
+            list[sqlite3.Row],
+            self._connection.execute(
+                """
+                SELECT
+                    source_set_members.source_id,
+                    sources.canonical_locator,
+                    source_set_members.member_index
+                FROM source_set_members
+                JOIN sources ON sources.source_id = source_set_members.source_id
+                WHERE source_set_members.source_set_id = ?
+                ORDER BY source_set_members.member_index ASC
+                """,
+                (source_set_id,),
+            ).fetchall(),
+        )
+        return SourceSet(
+            source_set_id=cast(str, set_row["source_set_id"]),
+            set_name=cast(str, set_row["set_name"]),
+            members=tuple(
+                SourceSetMember(
+                    source_id=cast(str, row["source_id"]),
+                    canonical_locator=cast(str, row["canonical_locator"]),
+                    member_index=cast(int, row["member_index"]),
+                )
+                for row in member_rows
+            ),
+        )
 
     def insert_snapshot(self, snapshot: Snapshot) -> None:
         _ = self._connection.execute(

@@ -53,12 +53,17 @@ class StoreMigrationsTest(unittest.TestCase):
                 "chunk_fts_idx",
                 "chunk_fts_docsize",
                 "chunk_fts_config",
+                "source_sets",
+                "source_set_members",
             }.issubset(table_names)
         )
         applied_versions = self.connection.execute(
             "SELECT version FROM schema_migrations ORDER BY version ASC"
         ).fetchall()
-        self.assertEqual(applied_versions, [("0001_initial.sql",)])
+        self.assertEqual(
+            applied_versions,
+            [("0001_initial.sql",), ("0002_source_sets.sql",)],
+        )
 
     def test_apply_migrations_is_a_no_op_when_all_versions_are_already_applied(
         self,
