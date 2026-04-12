@@ -8,7 +8,13 @@ import click
 
 from .. import __version__
 from ..app.refresh import RefreshOrchestrator
-from ..app.sources import list_sources, register_source, remove_source
+from ..app.sources import (
+    get_source_status,
+    list_source_status,
+    list_sources,
+    register_source,
+    remove_source,
+)
 from ..domain.models import DiscoveredDocument, QueryHit, Source
 from ..store.sqlite import SQLiteStore
 from .runtime import open_runtime
@@ -106,6 +112,61 @@ class _QueryModule(Protocol):
     def query_local(
         self, store: SQLiteStore, text: str, *, limit: int
     ) -> list[QueryHit]: ...
+
+
+@source.command("status")
+def source_status() -> None:
+    runtime = open_runtime()
+    try:
+        statuses = list_source_status(runtime.store)
+    finally:
+        runtime.close()
+
+    if not statuses:
+        click.echo("No sources registered.")
+        return
+
+    for status in statuses:
+        snapshot_id = status.active_snapshot_id or "none"
+        snapshot_status = (
+            status.snapshot_status.value
+            if status.snapshot_status is not None
+            else "none"
+        )
+        fetched_at = status.fetched_at or "none"
+        line = (
+            f"{status.source_id} {status.canonical_locator} snapshot={snapshot_id} "
+            f"status={snapshot_status} documents={status.document_count} "
+            f"chunks={status.chunk_count} fetched_at={fetched_at}"
+        )
+        click.echo(line)
+
+
+@source.command("show")
+@click.argument("source_id")
+def source_show(source_id: str) -> None:
+    runtime = open_runtime()
+    try:
+        status = get_source_status(runtime.store, source_id)
+    finally:
+        runtime.close()
+
+    if status is None:
+        click.echo(f"source not found: {source_id}")
+        return
+
+    click.echo(f"source_id: {status.source_id}")
+    click.echo(f"canonical_locator: {status.canonical_locator}")
+    click.echo(f"docset_root: {status.docset_root}")
+    click.echo(f"active_snapshot_id: {status.active_snapshot_id or 'none'}")
+    click.echo(
+        f"snapshot_status: {status.snapshot_status.value if status.snapshot_status is not None else 'none'}"
+    )
+    click.echo(f"document_count: {status.document_count}")
+    click.echo(f"chunk_count: {status.chunk_count}")
+    click.echo(f"fetched_at: {status.fetched_at or 'none'}")
+    click.echo(f"etag: {status.etag or 'none'}")
+    click.echo(f"last_modified: {status.last_modified or 'none'}")
 
 
 @source.command("reindex")
