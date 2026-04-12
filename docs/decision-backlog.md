@@ -15,3 +15,4 @@ Use ADRs for decisions that are already locked. Use this file for decisions that
 | Token counting | Deferred | none for v1 core | prompt budgeting becomes a real runtime concern | none, `tiktoken` |
 | MCP / agent transport | Deferred | keep CLI/app seam transport-agnostic beyond the current `locontext query --json` path | first stable external tool/resource integration path is defined | plain CLI contract, official MCP SDK |
 | Multi-provider LLM abstraction | Deferred | use official provider SDKs directly if/when needed | two or more providers become a real product requirement | direct SDKs, LiteLLM SDK |
+| Full evaluation platform | Deferred | keep a tiny fixture-driven query baseline command only | local baseline coverage stops being enough to compare retrieval changes | current baseline command, richer eval harness |

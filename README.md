@@ -21,6 +21,11 @@ Local-first context engine for docs grounding.
 - It stays local-only and transport-agnostic.
 - Broader MCP or server transport remains deferred.
 
+## Query quality baseline
+
+- A dev-only baseline command is available via `python -m locontext.dev.eval_query_quality --fixture <name>`.
+- It is intended for deterministic local regression checks, not end-user product surface.
+
 ## Out of scope for v1
 
 - Obsidian integration
