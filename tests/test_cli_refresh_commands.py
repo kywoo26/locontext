@@ -8,7 +8,12 @@ from unittest.mock import patch
 from click.testing import CliRunner
 
 from locontext.cli.main import main
-from locontext.domain.models import DiscoveredDocument, Snapshot, Source
+from locontext.domain.models import (
+    DiscoveredDocument,
+    DiscoveryOutcome,
+    Snapshot,
+    Source,
+)
 
 
 class _StaticDiscoveryProvider:
@@ -19,17 +24,19 @@ class _StaticDiscoveryProvider:
         self.title = title
         self.content_hash = content_hash
 
-    def discover(self, source: Source) -> list[DiscoveredDocument]:
+    def discover(self, source: Source) -> DiscoveryOutcome:
         resolved_locator = source.resolved_locator or source.canonical_locator
-        return [
-            DiscoveredDocument(
-                requested_locator=source.requested_locator,
-                resolved_locator=resolved_locator,
-                canonical_locator=source.canonical_locator,
-                title=self.title,
-                content_hash=self.content_hash,
-            )
-        ]
+        return DiscoveryOutcome(
+            documents=[
+                DiscoveredDocument(
+                    requested_locator=source.requested_locator,
+                    resolved_locator=resolved_locator,
+                    canonical_locator=source.canonical_locator,
+                    title=self.title,
+                    content_hash=self.content_hash,
+                )
+            ]
+        )
 
 
 class _RecordingIndexingEngine:

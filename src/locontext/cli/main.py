@@ -101,13 +101,21 @@ def source_refresh(source_id: str) -> None:
     runtime = open_runtime()
     try:
         orchestrator = RefreshOrchestrator(runtime.store)
-        result = orchestrator.refresh_source(source_id)
+        try:
+            result = orchestrator.refresh_source(source_id)
+        except Exception as exc:
+            click.echo(f"refresh failed: {exc}")
+            raise click.Abort() from exc
     finally:
         runtime.close()
 
     click.echo(f"refreshed source: {result.source_id}")
     click.echo(f"result: {'changed' if result.changed else 'unchanged'}")
     click.echo(f"freshness: {result.freshness_state}")
+    if result.warning_count:
+        click.echo(f"warnings: {result.warning_count}")
+        for warning in result.warning_samples:
+            click.echo(f"warning: {warning}")
     click.echo(f"active snapshot: {result.snapshot_id}")
     click.echo(f"documents: {result.document_count}")
 
