@@ -31,6 +31,7 @@ Local-first context engine for docs grounding.
 ```bash
 uv run locontext init
 uv run locontext status
+uv run locontext doctor
 ```
 
 ## Out of scope for v1

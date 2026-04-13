@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from collections.abc import Sequence
 from importlib import import_module
 from typing import Protocol, cast
@@ -76,6 +77,52 @@ def status() -> None:
     click.echo(f"active_snapshot_count: {project_status.active_snapshot_count}")
     click.echo(f"document_count: {project_status.document_count}")
     click.echo(f"chunk_count: {project_status.chunk_count}")
+
+
+@main.command()
+def doctor() -> None:
+    _project_root, config_path, db_path = project_paths()
+    data_dir = db_path.parent
+
+    if not config_path.exists() or not data_dir.exists() or not db_path.exists():
+        click.echo("doctor: fail project initialization")
+        if not config_path.exists():
+            click.echo("  - missing config: locontext.toml")
+        if not data_dir.exists():
+            click.echo("  - missing data dir: .locontext")
+        if not db_path.exists():
+            click.echo("  - missing database: .locontext/locontext.db")
+        click.echo("  - run `locontext init` to create project-local state")
+        raise click.exceptions.Exit(1)
+
+    try:
+        runtime = open_runtime()
+    except sqlite3.Error as exc:
+        click.echo("doctor: fail local state")
+        click.echo(f"  - state error: {exc}")
+        raise click.exceptions.Exit(1) from exc
+
+    try:
+        runtime.connection.execute(
+            "SELECT version FROM schema_migrations LIMIT 1"
+        ).fetchone()
+        runtime.connection.execute("SELECT 1 FROM sources LIMIT 1").fetchone()
+        runtime.connection.execute("SELECT 1 FROM snapshots LIMIT 1").fetchone()
+        runtime.connection.execute("SELECT 1 FROM documents LIMIT 1").fetchone()
+        runtime.connection.execute("SELECT 1 FROM chunks LIMIT 1").fetchone()
+    except sqlite3.Error as exc:
+        click.echo("doctor: fail local state")
+        click.echo(f"  - state error: {exc}")
+        raise click.exceptions.Exit(1) from exc
+    finally:
+        runtime.close()
+
+    click.echo("doctor: ok project initialization")
+    click.echo(f"  - config present: {config_path.name}")
+    click.echo(f"  - data dir present: {data_dir.name}")
+    click.echo(f"  - database present: {data_dir.name}/{db_path.name}")
+    click.echo("  - schema migrations table present")
+    click.echo("  - core tables present")
 
 
 @main.group()
