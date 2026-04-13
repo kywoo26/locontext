@@ -11,6 +11,7 @@ from .. import __version__
 from ..app.refresh import RefreshOrchestrator
 from ..app.sources import (
     create_source_set,
+    get_project_status,
     get_source_set,
     get_source_status,
     list_source_sets,
@@ -61,10 +62,20 @@ def status() -> None:
 
     project_root, config_path, db_path = project_paths()
     data_dir = db_path.parent
+    runtime = open_runtime()
+    try:
+        project_status = get_project_status(runtime.store)
+    finally:
+        runtime.close()
     click.echo(f"project_root: {project_root}")
     click.echo(f"config_path: {config_path}")
     click.echo(f"data_dir: {data_dir}")
     click.echo("initialized: true")
+    click.echo(f"source_count: {project_status.source_count}")
+    click.echo(f"source_set_count: {project_status.source_set_count}")
+    click.echo(f"active_snapshot_count: {project_status.active_snapshot_count}")
+    click.echo(f"document_count: {project_status.document_count}")
+    click.echo(f"chunk_count: {project_status.chunk_count}")
 
 
 @main.group()

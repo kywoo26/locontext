@@ -44,6 +44,15 @@ class SourceStatusResult:
 
 
 @dataclass(slots=True)
+class ProjectStatusResult:
+    source_count: int
+    source_set_count: int
+    active_snapshot_count: int
+    document_count: int
+    chunk_count: int
+
+
+@dataclass(slots=True)
 class SourceSetMemberResult:
     source_id: str
     canonical_locator: str
@@ -107,6 +116,16 @@ def get_source_status(store: SQLiteStore, source_id: str) -> SourceStatusResult 
     if source is None:
         return None
     return _source_status_from_source(store, source)
+
+
+def get_project_status(store: SQLiteStore) -> ProjectStatusResult:
+    return ProjectStatusResult(
+        source_count=store.count_sources(),
+        source_set_count=store.count_source_sets(),
+        active_snapshot_count=store.count_active_snapshots(),
+        document_count=store.count_all_documents(),
+        chunk_count=store.count_all_chunks(),
+    )
 
 
 def _source_status_from_source(
