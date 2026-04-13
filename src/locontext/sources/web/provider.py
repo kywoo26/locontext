@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass
 from hashlib import sha256
+from typing import cast
 from urllib.parse import urljoin
 
 import httpx
@@ -25,6 +26,7 @@ from .extract import (
     structured_content_as_dicts,
 )
 from .fetch import FetchedWebPage, WebFetchError, fetch_web_page
+from .policy import WebPageSignals, decide_page_admission
 
 
 @dataclass(slots=True)
@@ -64,6 +66,16 @@ class WebDiscoveryProvider:
                 continue
 
             scoped_document = in_scope[0]
+            if locator != source.requested_locator:
+                decision = _page_boundary_decision(
+                    scoped_document.canonical_locator,
+                    source.requested_locator,
+                    scoped_document.metadata,
+                )
+                scoped_document.metadata["boundary_score"] = decision.score
+                scoped_document.metadata["boundary_reasons"] = list(decision.reasons)
+                if not decision.accepted:
+                    continue
             if scoped_document.canonical_locator in seen_canonical:
                 continue
 
@@ -112,9 +124,40 @@ def _to_discovered_document(
             "structured_content": structured_content_as_dicts(
                 extracted.structured_content
             ),
+            "page_signals": extracted.page_signals or {},
         },
     )
 
 
 def _content_hash(text: str) -> str:
     return sha256(text.encode("utf-8")).hexdigest()
+
+
+def _page_boundary_decision(
+    canonical_locator: str,
+    seed_locator: str,
+    metadata: dict[str, object],
+):
+    raw_signals = metadata.get("page_signals")
+    if isinstance(raw_signals, dict):
+        signal_map = cast(dict[str, object], raw_signals)
+        signals = WebPageSignals(
+            visible_text_chars=int(cast(int, signal_map.get("visible_text_chars", 0))),
+            link_text_chars=int(cast(int, signal_map.get("link_text_chars", 0))),
+            paragraph_count=int(cast(int, signal_map.get("paragraph_count", 0))),
+            heading_count=int(cast(int, signal_map.get("heading_count", 0))),
+            path_depth=int(cast(int, signal_map.get("path_depth", 0))),
+        )
+    else:
+        signals = WebPageSignals(
+            visible_text_chars=0,
+            link_text_chars=0,
+            paragraph_count=0,
+            heading_count=0,
+            path_depth=0,
+        )
+    return decide_page_admission(
+        canonical_locator=canonical_locator,
+        seed_locator=seed_locator,
+        signals=signals,
+    )

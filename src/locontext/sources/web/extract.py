@@ -22,12 +22,15 @@ class ExtractedWebContent:
     text: str
     structured_content: tuple[ExtractedBlock, ...] = ()
     linked_locators: tuple[str, ...] = ()
+    page_signals: dict[str, int] | None = None
 
 
 def extract_web_content(page: FetchedWebPage) -> ExtractedWebContent:
     content_type = page.content_type or ""
     if _looks_like_html(page.content, content_type):
-        text, title, blocks, linked_locators = _extract_html(page.content, content_type)
+        text, title, blocks, linked_locators, link_text = _extract_html(
+            page.content, content_type
+        )
     else:
         text = _decode_text(page.content, content_type)
         title = None
@@ -37,17 +40,19 @@ def extract_web_content(page: FetchedWebPage) -> ExtractedWebContent:
             else ()
         )
         linked_locators = ()
+        link_text = ""
     return ExtractedWebContent(
         title=title,
         text=_normalize_whitespace(text),
         structured_content=blocks,
         linked_locators=linked_locators,
+        page_signals=_page_signals(text, blocks, page.resolved_locator, link_text),
     )
 
 
 def _extract_html(
     content: bytes, content_type: str
-) -> tuple[str, str | None, tuple[ExtractedBlock, ...], tuple[str, ...]]:
+) -> tuple[str, str | None, tuple[ExtractedBlock, ...], tuple[str, ...], str]:
     parser = _MinimalHTMLExtractor()
     parser.feed(_decode_text(content, content_type))
     parser.close()
@@ -56,6 +61,7 @@ def _extract_html(
         parser.title_text,
         tuple(parser.blocks),
         tuple(parser.linked_locators),
+        " ".join(parser.link_text_parts),
     )
 
 
@@ -90,9 +96,11 @@ class _MinimalHTMLExtractor(HTMLParser):
         self.title_parts: list[str] = []
         self.blocks: list[ExtractedBlock] = []
         self.linked_locators: list[str] = []
+        self.link_text_parts: list[str] = []
         self._seen_links: set[str] = set()
         self._in_ignored_tag: bool = False
         self._in_title: bool = False
+        self._in_link: bool = False
         self._block_tag: str | None = None
         self._block_level: int | None = None
         self._block_parts: list[str] = []
@@ -113,6 +121,7 @@ class _MinimalHTMLExtractor(HTMLParser):
         elif re.fullmatch(r"h[1-6]", tag):
             self._start_block("heading", int(tag[1]))
         elif tag == "a" and not self._in_ignored_tag:
+            self._in_link = True
             href = dict(attrs).get("href")
             normalized = _normalize_link_target(href)
             if normalized is not None and normalized not in self._seen_links:
@@ -129,6 +138,8 @@ class _MinimalHTMLExtractor(HTMLParser):
             self._finish_block(tag)
         elif re.fullmatch(r"h[1-6]", tag):
             self._finish_block("heading")
+        elif tag == "a":
+            self._in_link = False
 
     @override
     def handle_data(self, data: str) -> None:
@@ -139,6 +150,8 @@ class _MinimalHTMLExtractor(HTMLParser):
             return
         if data.strip():
             self.text_parts.append(data)
+            if self._in_link:
+                self.link_text_parts.append(data)
             if self._block_tag is not None:
                 self._block_parts.append(data)
 
@@ -190,3 +203,25 @@ def _normalize_link_target(href: str | None) -> str | None:
         return None
 
     return normalized
+
+
+def _page_signals(
+    text: str,
+    blocks: tuple[ExtractedBlock, ...],
+    resolved_locator: str,
+    link_text: str = "",
+) -> dict[str, int]:
+    visible_text_chars = len(_normalize_whitespace(text))
+    link_text_chars = len(_normalize_whitespace(link_text))
+    paragraph_count = sum(1 for block in blocks if block.kind in {"paragraph", "p"})
+    heading_count = sum(1 for block in blocks if block.kind == "heading")
+    path_depth = len(
+        [part for part in urlparse(resolved_locator).path.split("/") if part]
+    )
+    return {
+        "visible_text_chars": visible_text_chars,
+        "link_text_chars": link_text_chars,
+        "paragraph_count": paragraph_count,
+        "heading_count": heading_count,
+        "path_depth": path_depth,
+    }
