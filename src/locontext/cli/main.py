@@ -21,7 +21,7 @@ from ..app.sources import (
 )
 from ..domain.models import DiscoveryOutcome, QueryHit, Source
 from ..store.sqlite import SQLiteStore
-from .runtime import open_runtime
+from .runtime import initialize_project, is_initialized, open_runtime, project_paths
 
 
 @click.group(
@@ -32,6 +32,39 @@ from .runtime import open_runtime
 def main() -> None:
     """Local-first docs context engine."""
     return
+
+
+@main.command()
+def init() -> None:
+    result = initialize_project()
+    if result.created_config:
+        click.echo(f"created config: {result.config_path.name}")
+    else:
+        click.echo(f"config already exists: {result.config_path.name}")
+    if result.created_data_dir:
+        click.echo(f"created data dir: {result.data_dir.name}")
+    else:
+        click.echo(f"data dir already exists: {result.data_dir.name}")
+    db_label = f"{result.data_dir.name}/{result.db_path.name}"
+    if result.created_database:
+        click.echo(f"initialized database: {db_label}")
+    else:
+        click.echo(f"database already initialized: {db_label}")
+
+
+@main.command()
+def status() -> None:
+    if not is_initialized():
+        click.echo("project status: uninitialized")
+        click.echo("run `locontext init` to create project-local state")
+        return
+
+    project_root, config_path, db_path = project_paths()
+    data_dir = db_path.parent
+    click.echo(f"project_root: {project_root}")
+    click.echo(f"config_path: {config_path}")
+    click.echo(f"data_dir: {data_dir}")
+    click.echo("initialized: true")
 
 
 @main.group()
