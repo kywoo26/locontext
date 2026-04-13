@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from hashlib import sha256
 from importlib import import_module
@@ -22,6 +22,8 @@ class RefreshResult:
     document_count: int
     freshness_state: str
     freshness_reason: str
+    warning_count: int = 0
+    warning_samples: list[str] = field(default_factory=list)
 
 
 class RefreshOrchestrator:
@@ -41,8 +43,8 @@ class RefreshOrchestrator:
 
     def refresh_source(self, source_id: str) -> RefreshResult:
         source = self._require_source(source_id)
-        discovered = list(self._discovery_provider.discover(source))
-        ordered = filter_and_order_discovered_documents(source, discovered)
+        discovery = self._discovery_provider.discover(source)
+        ordered = filter_and_order_discovered_documents(source, discovery.documents)
         manifest_hash = _manifest_hash(ordered)
 
         active_snapshot = self._store.get_active_snapshot(source_id)
@@ -58,6 +60,10 @@ class RefreshOrchestrator:
                 document_count=len(documents),
                 freshness_state="current",
                 freshness_reason="active snapshot is current",
+                warning_count=discovery.warning_count,
+                warning_samples=[
+                    warning.locator for warning in discovery.warning_samples
+                ],
             )
 
         snapshot = Snapshot(
@@ -87,6 +93,8 @@ class RefreshOrchestrator:
             document_count=len(documents),
             freshness_state="current",
             freshness_reason="active snapshot is current",
+            warning_count=discovery.warning_count,
+            warning_samples=[warning.locator for warning in discovery.warning_samples],
         )
 
     def reindex_source(self, source_id: str) -> RefreshResult:

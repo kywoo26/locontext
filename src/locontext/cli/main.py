@@ -19,7 +19,7 @@ from ..app.sources import (
     register_source,
     remove_source,
 )
-from ..domain.models import DiscoveredDocument, QueryHit, Source
+from ..domain.models import DiscoveryOutcome, QueryHit, Source
 from ..store.sqlite import SQLiteStore
 from .runtime import open_runtime
 
@@ -113,7 +113,7 @@ def source_refresh(source_id: str) -> None:
 
 
 class _NoDiscoveryProvider:
-    def discover(self, source: Source) -> Sequence[DiscoveredDocument]:
+    def discover(self, source: Source) -> DiscoveryOutcome:
         _ = source
         raise RuntimeError("source reindex does not perform discovery")
 

@@ -79,6 +79,19 @@ class DiscoveredDocument:
 
 
 @dataclass(slots=True)
+class DiscoveryWarning:
+    locator: str
+    reason: str
+
+
+@dataclass(slots=True)
+class DiscoveryOutcome:
+    documents: list[DiscoveredDocument] = field(default_factory=list)
+    warning_count: int = 0
+    warning_samples: list[DiscoveryWarning] = field(default_factory=list)
+
+
+@dataclass(slots=True)
 class Chunk:
     chunk_id: str
     source_id: str
