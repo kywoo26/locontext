@@ -137,6 +137,43 @@ class SQLiteStore:
             for row in rows
         ]
 
+    def count_sources(self) -> int:
+        row = cast(
+            tuple[int] | None,
+            self._connection.execute("SELECT COUNT(*) FROM sources").fetchone(),
+        )
+        return 0 if row is None else row[0]
+
+    def count_source_sets(self) -> int:
+        row = cast(
+            tuple[int] | None,
+            self._connection.execute("SELECT COUNT(*) FROM source_sets").fetchone(),
+        )
+        return 0 if row is None else row[0]
+
+    def count_active_snapshots(self) -> int:
+        row = cast(
+            tuple[int] | None,
+            self._connection.execute(
+                "SELECT COUNT(*) FROM snapshots WHERE is_active = 1"
+            ).fetchone(),
+        )
+        return 0 if row is None else row[0]
+
+    def count_all_documents(self) -> int:
+        row = cast(
+            tuple[int] | None,
+            self._connection.execute("SELECT COUNT(*) FROM documents").fetchone(),
+        )
+        return 0 if row is None else row[0]
+
+    def count_all_chunks(self) -> int:
+        row = cast(
+            tuple[int] | None,
+            self._connection.execute("SELECT COUNT(*) FROM chunks").fetchone(),
+        )
+        return 0 if row is None else row[0]
+
     def create_source_set(
         self,
         source_set_id: str,
