@@ -7,7 +7,13 @@ from urllib.parse import urljoin
 
 import httpx
 
-from ...domain.models import DiscoveredDocument, Source, SourceKind
+from ...domain.models import (
+    DiscoveredDocument,
+    DiscoveryOutcome,
+    DiscoveryWarning,
+    Source,
+    SourceKind,
+)
 from .canonicalize import canonicalize_locator
 from .discovery import (
     filter_and_order_discovered_documents,
@@ -18,7 +24,7 @@ from .extract import (
     extract_web_content,
     structured_content_as_dicts,
 )
-from .fetch import FetchedWebPage, fetch_web_page
+from .fetch import FetchedWebPage, WebFetchError, fetch_web_page
 
 
 @dataclass(slots=True)
@@ -27,14 +33,15 @@ class WebDiscoveryProvider:
     timeout: float | httpx.Timeout = 10.0
     max_pages: int = 20
 
-    def discover(self, source: Source) -> list[DiscoveredDocument]:
+    def discover(self, source: Source) -> DiscoveryOutcome:
         if source.source_kind is not SourceKind.WEB:
-            return []
+            return DiscoveryOutcome()
 
         if self.max_pages <= 0:
-            return []
+            return DiscoveryOutcome()
 
         discovered: list[DiscoveredDocument] = []
+        warnings: list[DiscoveryWarning] = []
         pending: deque[str] = deque([source.requested_locator])
         seen_canonical: set[str] = set()
         queued_canonical: set[str] = {
@@ -43,7 +50,13 @@ class WebDiscoveryProvider:
 
         while pending and len(discovered) < self.max_pages:
             locator = pending.popleft()
-            page = fetch_web_page(locator, client=self.client, timeout=self.timeout)
+            try:
+                page = fetch_web_page(locator, client=self.client, timeout=self.timeout)
+            except WebFetchError as exc:
+                if locator == source.requested_locator:
+                    raise
+                warnings.append(DiscoveryWarning(locator=locator, reason=str(exc)))
+                continue
             extracted = extract_web_content(page)
             document = _to_discovered_document(page, extracted)
             in_scope = filter_and_order_discovered_documents(source, [document])
@@ -71,7 +84,11 @@ class WebDiscoveryProvider:
                 queued_canonical.add(candidate)
                 pending.append(candidate)
 
-        return filter_and_order_discovered_documents(source, discovered)
+        return DiscoveryOutcome(
+            documents=filter_and_order_discovered_documents(source, discovered),
+            warning_count=len(warnings),
+            warning_samples=warnings[:5],
+        )
 
 
 def _to_discovered_document(

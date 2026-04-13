@@ -3,11 +3,11 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Protocol
 
-from .models import DiscoveredDocument, Document, QueryHit, Snapshot, Source
+from .models import DiscoveryOutcome, Document, QueryHit, Snapshot, Source
 
 
 class DiscoveryProvider(Protocol):
-    def discover(self, source: Source) -> Sequence[DiscoveredDocument]:
+    def discover(self, source: Source) -> DiscoveryOutcome:
         """Return discovered documents for a source."""
         ...
 

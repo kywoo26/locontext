@@ -8,7 +8,13 @@ from importlib import import_module
 import httpx
 
 from locontext.app.refresh import RefreshOrchestrator
-from locontext.domain.models import Document, Snapshot, Source, SourceKind
+from locontext.domain.models import (
+    DiscoveryOutcome,
+    Document,
+    Snapshot,
+    Source,
+    SourceKind,
+)
 from locontext.store.sqlite import SQLiteStore
 
 
@@ -30,6 +36,15 @@ class _RecordingIndexingEngine:
 
     def remove_source(self, source_id: str) -> None:
         self.remove_calls.append(source_id)
+
+
+class _StaticOutcomeDiscoveryProvider:
+    def __init__(self, outcome: DiscoveryOutcome) -> None:
+        self.outcome = outcome
+
+    def discover(self, source: Source) -> DiscoveryOutcome:
+        _ = source
+        return self.outcome
 
 
 class RefreshOrchestratorTest(unittest.TestCase):
@@ -163,6 +178,47 @@ class RefreshOrchestratorTest(unittest.TestCase):
 
         self.assertEqual(engine.remove_calls, ["source-1"])
         self.assertIsNone(self.store.get_source("source-1"))
+
+    def test_refresh_succeeds_when_one_child_link_fails(self) -> None:
+        outcome = DiscoveryOutcome(
+            documents=[],
+            warning_count=1,
+            warning_samples=[],
+        )
+        outcome.documents.append(
+            __import__(
+                "locontext.domain.models", fromlist=["DiscoveredDocument"]
+            ).DiscoveredDocument(
+                requested_locator="https://docs.example.com/docs/intro",
+                resolved_locator="https://docs.example.com/docs/intro",
+                canonical_locator="https://docs.example.com/docs/intro",
+                content_hash="hash-1",
+            )
+        )
+        provider = _StaticOutcomeDiscoveryProvider(outcome)
+        engine = _RecordingIndexingEngine()
+        orchestrator = RefreshOrchestrator(self.store, provider, engine)
+
+        result = orchestrator.refresh_source("source-1")
+
+        self.assertTrue(result.changed)
+        self.assertEqual(result.document_count, 1)
+        self.assertEqual(result.warning_count, 1)
+
+    def test_refresh_keeps_seed_failure_fatal(self) -> None:
+        class _FatalProvider:
+            def discover(self, source: Source) -> DiscoveryOutcome:
+                _ = source
+                raise RuntimeError("seed fetch failed")
+
+        orchestrator = RefreshOrchestrator(
+            self.store,
+            _FatalProvider(),
+            _RecordingIndexingEngine(),
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "seed fetch failed"):
+            _ = orchestrator.refresh_source("source-1")
 
 
 if __name__ == "__main__":
