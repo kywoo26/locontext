@@ -64,6 +64,31 @@ class WebExtractTest(unittest.TestCase):
         self.assertEqual(extracted.text, "Line 1 Line 2")
         self.assertEqual(extracted.linked_locators, ())
 
+    def test_extracts_page_signals_for_policy_use(self) -> None:
+        page = FetchedWebPage(
+            requested_locator="https://example.com/guide",
+            resolved_locator="https://example.com/guide",
+            status_code=200,
+            headers={"content-type": "text/html; charset=utf-8"},
+            content=(
+                b"<html><body>"
+                b"<h1>Guide</h1>"
+                b"<p>Hello world paragraph.</p>"
+                b"<p>Another paragraph.</p>"
+                b'<a href="/nav">Navigation</a>'
+                b"</body></html>"
+            ),
+        )
+
+        extracted = extract_web_content(page)
+
+        if extracted.page_signals is None:
+            self.fail("expected page signals")
+        self.assertGreater(extracted.page_signals["visible_text_chars"], 10)
+        self.assertEqual(extracted.page_signals["paragraph_count"], 2)
+        self.assertEqual(extracted.page_signals["heading_count"], 1)
+        self.assertGreater(extracted.page_signals["link_text_chars"], 0)
+
 
 if __name__ == "__main__":
     _ = unittest.main()

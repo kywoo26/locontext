@@ -120,6 +120,23 @@ class WebDiscoveryPolicyTest(unittest.TestCase):
             ],
         )
 
+    def test_keeps_metadata_for_second_stage_boundary_policy(self) -> None:
+        ordered = filter_and_order_discovered_documents(
+            self._source(),
+            [
+                DiscoveredDocument(
+                    requested_locator="https://docs.example.com/docs/intro",
+                    resolved_locator="https://docs.example.com/docs/intro",
+                    canonical_locator="https://docs.example.com/docs/intro",
+                    metadata={"page_signals": {"visible_text_chars": 100}},
+                )
+            ],
+        )
+
+        self.assertEqual(
+            ordered[0].metadata["page_signals"], {"visible_text_chars": 100}
+        )
+
 
 if __name__ == "__main__":
     _ = unittest.main()
