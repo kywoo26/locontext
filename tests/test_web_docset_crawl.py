@@ -259,6 +259,50 @@ class WebDocsetCrawlPolicyTest(unittest.TestCase):
             [item.canonical_locator for item in second],
         )
 
+    def test_refresh_rejects_host_level_github_chrome_pages(self) -> None:
+        with tempfile.TemporaryDirectory():
+            routes = {
+                "/code-yeongyu/oh-my-openagent": b'<html><head><title>Repo</title></head><body><h1>Oh My OpenAgent</h1><p>Local docs and prompts.</p><a href="/code-yeongyu/oh-my-openagent/blob/main/README.md">README</a><a href="/collections">Collections</a><a href="/mcp">MCP</a></body></html>',
+                "/code-yeongyu/oh-my-openagent/blob/main/README.md": b"<html><head><title>README</title></head><body><h1>README</h1><p>Prometheus planning and start-work.</p></body></html>",
+                "/collections": b'<html><head><title>Collections</title></head><body><a href="/mcp">MCP</a><a href="/marketplace">Marketplace</a><a href="/pricing">Pricing</a></body></html>',
+                "/mcp": b'<html><head><title>MCP</title></head><body><a href="/marketplace">Marketplace</a><a href="/pricing">Pricing</a><a href="/login">Login</a></body></html>',
+            }
+
+            with _serve_fixture(routes) as (base_url, _requests):
+                connection = sqlite3.connect(":memory:")
+                self.addCleanup(connection.close)
+                store = SQLiteStore(connection)
+                store.ensure_schema()
+                source = Source(
+                    source_id="source-1",
+                    source_kind=SourceKind.WEB,
+                    requested_locator=f"{base_url}/code-yeongyu/oh-my-openagent",
+                    resolved_locator=f"{base_url}/code-yeongyu/oh-my-openagent",
+                    canonical_locator=f"{base_url}/code-yeongyu/oh-my-openagent",
+                    docset_root=f"{base_url}",
+                )
+                store.upsert_source(source)
+
+                client = httpx.Client(follow_redirects=True, timeout=5.0)
+                self.addCleanup(client.close)
+                provider = WebDiscoveryProvider(client=client)
+                engine = _RecordingIndexingEngine()
+                orchestrator = RefreshOrchestrator(store, provider, engine)
+
+                result = orchestrator.refresh_source("source-1")
+                snapshot_id = result.snapshot_id
+                if snapshot_id is None:
+                    self.fail("expected snapshot id")
+                stored_documents = store.list_documents(snapshot_id)
+
+                self.assertEqual(
+                    [item.canonical_locator for item in stored_documents],
+                    [
+                        f"{base_url}/code-yeongyu/oh-my-openagent",
+                        f"{base_url}/code-yeongyu/oh-my-openagent/blob/main/README.md",
+                    ],
+                )
+
 
 if __name__ == "__main__":
     _ = unittest.main()
