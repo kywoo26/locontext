@@ -5,6 +5,7 @@ import sqlite3
 from collections.abc import Sequence
 from typing import cast
 
+from ..domain.contracts import QueryEngineDescriptor
 from ..domain.models import Chunk, Document, QueryHit, Snapshot, Source
 from ..store.sqlite import SQLiteStore
 
@@ -49,6 +50,14 @@ class SQLiteLexicalEngine:
         if match_query is None:
             return []
         return self._store.search_chunks(match_query, limit=limit, source_id=source_id)
+
+    def describe(self) -> QueryEngineDescriptor:
+        return QueryEngineDescriptor(
+            engine_kind="lexical",
+            engine_name="sqlite_lexical",
+            semantic_ready=False,
+            is_baseline=True,
+        )
 
     def remove_source(self, source_id: str) -> None:
         _ = self._store.delete_source(source_id)
