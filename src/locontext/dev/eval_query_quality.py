@@ -37,6 +37,13 @@ class QueryQualityResult:
     expected_hit_keys: list[str]
 
 
+@dataclass(slots=True, frozen=True)
+class QueryQualityMetricsResult:
+    fixture: str
+    metrics: dict[str, float]
+    passed: bool
+
+
 _FIXTURES: Final[dict[str, QueryQualityFixture]] = {
     "basic-docs": QueryQualityFixture(
         name="basic-docs",
@@ -115,6 +122,30 @@ def evaluate_fixture(fixture_name: str) -> QueryQualityResult:
     )
 
 
+def evaluate_fixture_metrics(fixture_name: str) -> QueryQualityMetricsResult:
+    result = evaluate_fixture(fixture_name)
+    actual = result.actual_hit_keys
+    expected = result.expected_hit_keys
+    recall_at_limit = (
+        1.0
+        if not expected
+        else sum(1 for key in expected if key in actual) / len(expected)
+    )
+    mrr = 0.0
+    for rank, key in enumerate(actual, start=1):
+        if key in expected:
+            mrr = 1.0 / rank
+            break
+    return QueryQualityMetricsResult(
+        fixture=result.fixture,
+        metrics={
+            "mrr": mrr,
+            "recall_at_limit": recall_at_limit,
+        },
+        passed=result.passed,
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Run local query quality baseline checks."
@@ -123,14 +154,23 @@ def main() -> int:
         "--fixture", required=True, choices=sorted(_FIXTURES.keys())
     )
     _ = parser.add_argument("--seed-project")
+    _ = parser.add_argument("--metrics", action="store_true")
     args = parser.parse_args()
 
     fixture_name = cast(str, args.fixture)
     seed_project = cast(str | None, args.seed_project)
+    metrics_mode = cast(bool, args.metrics)
     if seed_project is not None:
         seed_fixture_project(fixture_name, Path(seed_project))
         print(f"seeded_project: {seed_project}")
         return 0
+
+    if metrics_mode:
+        metrics = evaluate_fixture_metrics(fixture_name)
+        print(f"fixture: {metrics.fixture}")
+        print(f"passed: {str(metrics.passed).lower()}")
+        print(f"metrics: {metrics.metrics}")
+        return 0 if metrics.passed else 1
 
     result = evaluate_fixture(fixture_name)
     print(f"fixture: {result.fixture}")
