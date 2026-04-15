@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import sqlite3
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Final, cast
 
 from ..app.query import query_local_json
@@ -52,6 +53,34 @@ _FIXTURES: Final[dict[str, QueryQualityFixture]] = {
             "source-1|https://docs.example.com/docs/index|0",
         ),
     ),
+    "noisy-source": QueryQualityFixture(
+        name="noisy-source",
+        query_text="api token",
+        limit=5,
+        expected_hit_keys=("source-1|https://docs.example.com/docs/api|0",),
+    ),
+    "source-filter": QueryQualityFixture(
+        name="source-filter",
+        query_text="guide term",
+        limit=5,
+        expected_hit_keys=("source-2|https://docs.example.com/other/guide|0",),
+        source_id="source-2",
+    ),
+    "no-hit-query": QueryQualityFixture(
+        name="no-hit-query",
+        query_text="definitely-no-hit",
+        limit=5,
+        expected_hit_keys=(),
+    ),
+    "ambiguous-multi-hit": QueryQualityFixture(
+        name="ambiguous-multi-hit",
+        query_text="shared term",
+        limit=5,
+        expected_hit_keys=(
+            "source-1|https://docs.example.com/docs/alpha|0",
+            "source-1|https://docs.example.com/docs/beta|0",
+        ),
+    ),
 }
 
 
@@ -93,9 +122,16 @@ def main() -> int:
     _ = parser.add_argument(
         "--fixture", required=True, choices=sorted(_FIXTURES.keys())
     )
+    _ = parser.add_argument("--seed-project")
     args = parser.parse_args()
 
     fixture_name = cast(str, args.fixture)
+    seed_project = cast(str | None, args.seed_project)
+    if seed_project is not None:
+        seed_fixture_project(fixture_name, Path(seed_project))
+        print(f"seeded_project: {seed_project}")
+        return 0
+
     result = evaluate_fixture(fixture_name)
     print(f"fixture: {result.fixture}")
     print(f"passed: {str(result.passed).lower()}")
@@ -107,17 +143,12 @@ def main() -> int:
 
 
 def _seed_fixture(store: SQLiteStore, fixture: QueryQualityFixture) -> None:
-    source = Source(
-        source_id="source-1",
-        source_kind=SourceKind.WEB,
-        requested_locator="https://docs.example.com/docs",
-        resolved_locator="https://docs.example.com/docs",
-        canonical_locator="https://docs.example.com/docs",
-        docset_root="https://docs.example.com/docs",
-    )
-    store.upsert_source(source)
-
     if fixture.name == "basic-docs":
+        source = _seed_source(
+            store,
+            source_id="source-1",
+            locator="https://docs.example.com/docs",
+        )
         _insert_snapshot_with_chunks(
             store,
             source,
@@ -132,6 +163,11 @@ def _seed_fixture(store: SQLiteStore, fixture: QueryQualityFixture) -> None:
         return
 
     if fixture.name == "multi-page-docset":
+        source = _seed_source(
+            store,
+            source_id="source-1",
+            locator="https://docs.example.com/docs",
+        )
         _insert_snapshot_with_chunks(
             store,
             source,
@@ -149,7 +185,140 @@ def _seed_fixture(store: SQLiteStore, fixture: QueryQualityFixture) -> None:
         )
         return
 
+    if fixture.name == "noisy-source":
+        source = _seed_source(
+            store,
+            source_id="source-1",
+            locator="https://docs.example.com/docs",
+        )
+        _insert_snapshot_with_chunks(
+            store,
+            source,
+            snapshot_id="snapshot-noisy",
+            documents=(
+                (
+                    "https://docs.example.com/docs/api",
+                    ["API > Tokens\napi token authentication"],
+                ),
+                (
+                    "https://docs.example.com/docs/navigation",
+                    ["Docs navigation links and generic links"],
+                ),
+            ),
+        )
+        return
+
+    if fixture.name == "source-filter":
+        _seed_source_filter_fixture(store)
+        return
+
+    if fixture.name == "no-hit-query":
+        source = _seed_source(
+            store,
+            source_id="source-1",
+            locator="https://docs.example.com/docs",
+        )
+        _insert_snapshot_with_chunks(
+            store,
+            source,
+            snapshot_id="snapshot-no-hit",
+            documents=(
+                (
+                    "https://docs.example.com/docs/guide",
+                    ["Guide > Intro\nhello world only"],
+                ),
+            ),
+        )
+        return
+
+    if fixture.name == "ambiguous-multi-hit":
+        source = _seed_source(
+            store,
+            source_id="source-1",
+            locator="https://docs.example.com/docs",
+        )
+        _insert_snapshot_with_chunks(
+            store,
+            source,
+            snapshot_id="snapshot-ambiguous",
+            documents=(
+                (
+                    "https://docs.example.com/docs/alpha",
+                    ["Alpha > Intro\nshared term alpha"],
+                ),
+                (
+                    "https://docs.example.com/docs/beta",
+                    ["Beta > Intro\nshared term beta"],
+                ),
+            ),
+        )
+        return
+
     raise KeyError(fixture.name)
+
+
+def seed_fixture_project(fixture_name: str, project_root: Path) -> None:
+    project_root.mkdir(parents=True, exist_ok=True)
+    config_path = project_root / "locontext.toml"
+    if not config_path.exists():
+        _ = config_path.write_text('data_dir = ".locontext"\n', encoding="utf-8")
+    data_dir = project_root / ".locontext"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(data_dir / "locontext.db")
+    try:
+        store = SQLiteStore(connection)
+        store.ensure_schema()
+        _seed_fixture(store, _FIXTURES[fixture_name])
+    finally:
+        connection.close()
+
+
+def _seed_source(store: SQLiteStore, *, source_id: str, locator: str) -> Source:
+    source = Source(
+        source_id=source_id,
+        source_kind=SourceKind.WEB,
+        requested_locator=locator,
+        resolved_locator=locator,
+        canonical_locator=locator,
+        docset_root=locator,
+    )
+    store.upsert_source(source)
+    return source
+
+
+def _seed_source_filter_fixture(store: SQLiteStore) -> None:
+    source1 = _seed_source(
+        store,
+        source_id="source-1",
+        locator="https://docs.example.com/docs",
+    )
+    source2 = _seed_source(
+        store,
+        source_id="source-2",
+        locator="https://docs.example.com/other",
+    )
+    _insert_snapshot_with_chunks(
+        store,
+        source1,
+        snapshot_id="snapshot-source-1",
+        documents=(
+            (
+                "https://docs.example.com/docs/guide",
+                ["Guide > Intro\nguide term from source one"],
+            ),
+        ),
+    )
+    _insert_snapshot_with_chunks(
+        store,
+        source2,
+        snapshot_id="snapshot-source-2",
+        documents=(
+            (
+                "https://docs.example.com/other/guide",
+                ["Guide > Intro\nguide term from source two"],
+            ),
+        ),
+    )
 
 
 def _insert_snapshot_with_chunks(
