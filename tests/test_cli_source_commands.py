@@ -3,14 +3,54 @@ from __future__ import annotations
 import sqlite3
 import unittest
 from pathlib import Path
+from typing import cast
+from unittest.mock import patch
 
 from click.testing import CliRunner
 
 from locontext.cli.main import main
+from locontext.domain.models import DiscoveryOutcome, Snapshot, Source
+
+
+class _EmptyDiscoveryProvider:
+    def discover(self, source: Source) -> DiscoveryOutcome:
+        _ = source
+        return DiscoveryOutcome(documents=[])
+
+
+class _RecordingIndexingEngine:
+    def __init__(self) -> None:
+        self.reindex_calls: list[tuple[str, str, int]] = []
+
+    def reindex_snapshot(
+        self,
+        source: Source,
+        snapshot: Snapshot,
+        documents: list[object],
+    ) -> None:
+        self.reindex_calls.append(
+            (source.source_id, snapshot.snapshot_id, len(documents))
+        )
+
+    def remove_source(self, _source_id: str) -> None:
+        return None
 
 
 class SourceCommandTest(unittest.TestCase):
     runner: CliRunner = CliRunner()
+
+    def _snapshot_id(self, source_id: str) -> str | None:
+        with sqlite3.connect(".locontext/locontext.db") as connection:
+            row = cast(
+                tuple[str | None] | None,
+                connection.execute(
+                    "SELECT active_snapshot_id FROM sources WHERE source_id = ?",
+                    (source_id,),
+                ).fetchone(),
+            )
+        if row is None:
+            self.fail("expected a stored source row")
+        return row[0]
 
     def test_source_add_creates_default_local_db(self) -> None:
         with self.runner.isolated_filesystem():
@@ -118,6 +158,70 @@ class SourceCommandTest(unittest.TestCase):
 
             self.assertEqual(result.exit_code, 0)
             self.assertEqual(result.output, "source not found: missing-id\n")
+
+    def _snapshot_fetched_at(self, snapshot_id: str) -> str:
+        with sqlite3.connect(".locontext/locontext.db") as connection:
+            row = cast(
+                tuple[str] | None,
+                connection.execute(
+                    "SELECT fetched_at FROM snapshots WHERE snapshot_id = ?",
+                    (snapshot_id,),
+                ).fetchone(),
+            )
+        if row is None:
+            self.fail("expected a stored snapshot row")
+        return row[0]
+
+    def test_source_show_reports_active_zero_document_snapshot(self) -> None:
+        with self.runner.isolated_filesystem():
+            add_result = self.runner.invoke(
+                main, ["source", "add", "https://docs.example.com/docs"]
+            )
+            self.assertEqual(add_result.exit_code, 0)
+            source_id = add_result.output.splitlines()[0].split()[-1]
+            provider = _EmptyDiscoveryProvider()
+            engine = _RecordingIndexingEngine()
+
+            with (
+                patch(
+                    "locontext.app.refresh._default_discovery_provider",
+                    return_value=provider,
+                ),
+                patch(
+                    "locontext.app.refresh._default_indexing_engine",
+                    return_value=engine,
+                ),
+            ):
+                refresh_result = self.runner.invoke(
+                    main, ["source", "refresh", source_id]
+                )
+
+            self.assertEqual(refresh_result.exit_code, 0)
+            snapshot_id = self._snapshot_id(source_id)
+            self.assertIsNotNone(snapshot_id)
+            snapshot_id = cast(str, snapshot_id)
+            fetched_at = self._snapshot_fetched_at(snapshot_id)
+
+            result = self.runner.invoke(main, ["source", "show", source_id])
+
+            self.assertEqual(result.exit_code, 0)
+            self.assertEqual(
+                result.output.strip().splitlines(),
+                [
+                    f"source_id: {source_id}",
+                    "canonical_locator: https://docs.example.com/docs",
+                    "docset_root: https://docs.example.com",
+                    f"active_snapshot_id: {snapshot_id}",
+                    "snapshot_status: indexed",
+                    "document_count: 0",
+                    "chunk_count: 0",
+                    f"fetched_at: {fetched_at}",
+                    "freshness: unhealthy-empty",
+                    "freshness_reason: zero documents in active snapshot",
+                    "etag: none",
+                    "last_modified: none",
+                ],
+            )
 
     def test_source_add_honors_custom_data_dir(self) -> None:
         with self.runner.isolated_filesystem():

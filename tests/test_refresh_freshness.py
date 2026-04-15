@@ -5,7 +5,13 @@ import unittest
 from typing import override
 
 from locontext.app.refresh import get_freshness_state
-from locontext.domain.models import Snapshot, SnapshotStatus, Source, SourceKind
+from locontext.domain.models import (
+    DiscoveredDocument,
+    Snapshot,
+    SnapshotStatus,
+    Source,
+    SourceKind,
+)
 from locontext.store.sqlite import SQLiteStore
 
 
@@ -29,39 +35,96 @@ class RefreshFreshnessContractTest(unittest.TestCase):
         )
         self.store.upsert_source(self.source)
 
+    def _activate_snapshot(
+        self,
+        *,
+        snapshot_id: str,
+        status: SnapshotStatus,
+        documents: list[DiscoveredDocument] | None = None,
+    ) -> Snapshot:
+        snapshot = Snapshot(
+            snapshot_id=snapshot_id,
+            source_id=self.source.source_id,
+            status=status,
+            fetched_at="2026-04-12T00:00:00+00:00",
+            is_active=True,
+        )
+        self.store.insert_snapshot(snapshot)
+        if documents is not None:
+            _ = self.store.replace_snapshot_documents(
+                snapshot.snapshot_id,
+                self.source.source_id,
+                documents,
+            )
+        self.store.activate_snapshot(self.source.source_id, snapshot.snapshot_id)
+        if status is SnapshotStatus.STALE:
+            self.store.mark_snapshot_stale(snapshot.snapshot_id)
+        return snapshot
+
     def test_never_refreshed_source_reports_never_refreshed(self) -> None:
         state = get_freshness_state(self.store, self.source.source_id)
 
         self.assertEqual(state.code, "never-refreshed")
         self.assertEqual(state.reason, "source has never been refreshed")
 
-    def test_active_snapshot_without_stale_mark_is_current(self) -> None:
-        snapshot = Snapshot(
+    def test_active_snapshot_with_zero_documents_is_unhealthy_empty(self) -> None:
+        _ = self._activate_snapshot(
             snapshot_id="snapshot-1",
-            source_id=self.source.source_id,
             status=SnapshotStatus.INDEXED,
-            fetched_at="2026-04-12T00:00:00+00:00",
-            is_active=True,
+            documents=[],
         )
-        self.store.insert_snapshot(snapshot)
-        self.store.activate_snapshot(self.source.source_id, snapshot.snapshot_id)
+
+        state = get_freshness_state(self.store, self.source.source_id)
+
+        self.assertEqual(state.code, "unhealthy-empty")
+        self.assertEqual(state.reason, "zero documents in active snapshot")
+
+    def test_active_stale_snapshot_with_zero_documents_is_unhealthy_empty(self) -> None:
+        _ = self._activate_snapshot(
+            snapshot_id="snapshot-1",
+            status=SnapshotStatus.STALE,
+            documents=[],
+        )
+
+        state = get_freshness_state(self.store, self.source.source_id)
+
+        self.assertEqual(state.code, "unhealthy-empty")
+        self.assertEqual(state.reason, "zero documents in active snapshot")
+
+    def test_active_snapshot_with_documents_is_current(self) -> None:
+        _ = self._activate_snapshot(
+            snapshot_id="snapshot-1",
+            status=SnapshotStatus.INDEXED,
+            documents=[
+                DiscoveredDocument(
+                    requested_locator="https://docs.example.com/docs/guide",
+                    resolved_locator="https://docs.example.com/docs/guide",
+                    canonical_locator="https://docs.example.com/docs/guide",
+                    title="Guide",
+                    content_hash="doc-hash-1",
+                )
+            ],
+        )
 
         state = get_freshness_state(self.store, self.source.source_id)
 
         self.assertEqual(state.code, "current")
         self.assertEqual(state.reason, "active snapshot is current")
 
-    def test_active_snapshot_marked_stale_is_advisory_only(self) -> None:
-        snapshot = Snapshot(
+    def test_active_stale_snapshot_with_documents_is_advisory_only(self) -> None:
+        _ = self._activate_snapshot(
             snapshot_id="snapshot-1",
-            source_id=self.source.source_id,
             status=SnapshotStatus.STALE,
-            fetched_at="2026-04-12T00:00:00+00:00",
-            is_active=True,
+            documents=[
+                DiscoveredDocument(
+                    requested_locator="https://docs.example.com/docs/guide",
+                    resolved_locator="https://docs.example.com/docs/guide",
+                    canonical_locator="https://docs.example.com/docs/guide",
+                    title="Guide",
+                    content_hash="doc-hash-1",
+                )
+            ],
         )
-        self.store.insert_snapshot(snapshot)
-        self.store.activate_snapshot(self.source.source_id, snapshot.snapshot_id)
-        self.store.mark_snapshot_stale(snapshot.snapshot_id)
 
         state = get_freshness_state(self.store, self.source.source_id)
 

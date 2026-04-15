@@ -132,6 +132,7 @@ def _source_status_from_source(
     store: SQLiteStore, source: Source
 ) -> SourceStatusResult:
     active_snapshot = store.get_active_snapshot(source.source_id)
+    freshness = get_freshness_state(store, source.source_id)
     if active_snapshot is None:
         return SourceStatusResult(
             source_id=source.source_id,
@@ -144,18 +145,19 @@ def _source_status_from_source(
             fetched_at=None,
             etag=None,
             last_modified=None,
-            freshness_state="never-refreshed",
-            freshness_reason="source has never been refreshed",
+            freshness_state=freshness.code,
+            freshness_reason=freshness.reason,
         )
-    freshness = get_freshness_state(store, source.source_id)
+    document_count = store.count_documents(active_snapshot.snapshot_id)
+    chunk_count = store.count_chunks(active_snapshot.snapshot_id)
     return SourceStatusResult(
         source_id=source.source_id,
         canonical_locator=source.canonical_locator,
         docset_root=source.docset_root,
         active_snapshot_id=active_snapshot.snapshot_id,
         snapshot_status=active_snapshot.status,
-        document_count=store.count_documents(active_snapshot.snapshot_id),
-        chunk_count=store.count_chunks(active_snapshot.snapshot_id),
+        document_count=document_count,
+        chunk_count=chunk_count,
         fetched_at=active_snapshot.fetched_at,
         etag=active_snapshot.etag,
         last_modified=active_snapshot.last_modified,

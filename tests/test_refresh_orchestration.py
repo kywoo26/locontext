@@ -205,6 +205,19 @@ class RefreshOrchestratorTest(unittest.TestCase):
         self.assertEqual(result.document_count, 1)
         self.assertEqual(result.warning_count, 1)
 
+    def test_refresh_reports_unhealthy_empty_for_zero_documents(self) -> None:
+        outcome = DiscoveryOutcome(documents=[])
+        provider = _StaticOutcomeDiscoveryProvider(outcome)
+        engine = _RecordingIndexingEngine()
+        orchestrator = RefreshOrchestrator(self.store, provider, engine)
+
+        result = orchestrator.refresh_source("source-1")
+
+        self.assertTrue(result.changed)
+        self.assertEqual(result.document_count, 0)
+        self.assertEqual(result.freshness_state, "unhealthy-empty")
+        self.assertEqual(result.freshness_reason, "zero documents in active snapshot")
+
     def test_refresh_keeps_seed_failure_fatal(self) -> None:
         class _FatalProvider:
             def discover(self, source: Source) -> DiscoveryOutcome:

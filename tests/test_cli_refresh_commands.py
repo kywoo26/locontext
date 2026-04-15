@@ -39,6 +39,12 @@ class _StaticDiscoveryProvider:
         )
 
 
+class _EmptyDiscoveryProvider:
+    def discover(self, source: Source) -> DiscoveryOutcome:
+        _ = source
+        return DiscoveryOutcome(documents=[])
+
+
 class _RecordingIndexingEngine:
     def __init__(self) -> None:
         self.reindex_calls: list[tuple[str, str, int]] = []
@@ -135,6 +141,42 @@ class SourceRefreshCommandTest(unittest.TestCase):
             self.assertEqual(row[0], 1)
             self.assertEqual(row[1], "indexed")
             self.assertEqual(engine.reindex_calls, [(source_id, snapshot_id, 1)])
+
+    def test_source_refresh_reports_unhealthy_empty_when_no_documents_are_found(
+        self,
+    ) -> None:
+        with self.runner.isolated_filesystem():
+            source_id = self._seed_source()
+            provider = _EmptyDiscoveryProvider()
+            engine = _RecordingIndexingEngine()
+
+            with (
+                patch(
+                    "locontext.app.refresh._default_discovery_provider",
+                    return_value=provider,
+                ),
+                patch(
+                    "locontext.app.refresh._default_indexing_engine",
+                    return_value=engine,
+                ),
+            ):
+                result = self.runner.invoke(main, ["source", "refresh", source_id])
+
+            self.assertEqual(result.exit_code, 0)
+            snapshot_id = self._snapshot_id(source_id)
+            self.assertIsNotNone(snapshot_id)
+            snapshot_id = cast(str, snapshot_id)
+            self.assertEqual(
+                result.output.strip().splitlines(),
+                [
+                    f"refreshed source: {source_id}",
+                    "result: changed",
+                    "freshness: unhealthy-empty",
+                    f"active snapshot: {snapshot_id}",
+                    "documents: 0",
+                ],
+            )
+            self.assertEqual(engine.reindex_calls, [(source_id, snapshot_id, 0)])
 
     def test_source_refresh_reports_unchanged_when_manifest_matches(self) -> None:
         with self.runner.isolated_filesystem():

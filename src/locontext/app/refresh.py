@@ -53,13 +53,14 @@ class RefreshOrchestrator:
             and active_snapshot.content_hash == manifest_hash
         ):
             documents = self._store.list_documents(active_snapshot.snapshot_id)
+            freshness = _derive_freshness_state(active_snapshot, len(documents))
             return RefreshResult(
                 source_id=source_id,
                 snapshot_id=active_snapshot.snapshot_id,
                 changed=False,
                 document_count=len(documents),
-                freshness_state="current",
-                freshness_reason="active snapshot is current",
+                freshness_state=freshness.code,
+                freshness_reason=freshness.reason,
                 warning_count=discovery.warning_count,
                 warning_samples=[
                     warning.locator for warning in discovery.warning_samples
@@ -86,13 +87,14 @@ class RefreshOrchestrator:
             self._store.mark_snapshot_failed(snapshot.snapshot_id)
             raise
 
+        freshness = _derive_freshness_state(snapshot, len(documents))
         return RefreshResult(
             source_id=source_id,
             snapshot_id=snapshot.snapshot_id,
             changed=True,
             document_count=len(documents),
-            freshness_state="current",
-            freshness_reason="active snapshot is current",
+            freshness_state=freshness.code,
+            freshness_reason=freshness.reason,
             warning_count=discovery.warning_count,
             warning_samples=[warning.locator for warning in discovery.warning_samples],
         )
@@ -105,13 +107,14 @@ class RefreshOrchestrator:
 
         documents = self._store.list_documents(snapshot.snapshot_id)
         self._indexing_engine.reindex_snapshot(source, snapshot, documents)
+        freshness = _derive_freshness_state(snapshot, len(documents))
         return RefreshResult(
             source_id=source_id,
             snapshot_id=snapshot.snapshot_id,
             changed=False,
             document_count=len(documents),
-            freshness_state=_freshness_state(snapshot).code,
-            freshness_reason=_freshness_state(snapshot).reason,
+            freshness_state=freshness.code,
+            freshness_reason=freshness.reason,
         )
 
     def remove_source(self, source_id: str) -> None:
@@ -149,15 +152,25 @@ class FreshnessState:
 
 def get_freshness_state(store: SQLiteStore, source_id: str) -> FreshnessState:
     snapshot = store.get_active_snapshot(source_id)
+    document_count = (
+        0 if snapshot is None else store.count_documents(snapshot.snapshot_id)
+    )
+    return _derive_freshness_state(snapshot, document_count)
+
+
+def _derive_freshness_state(
+    snapshot: Snapshot | None, document_count: int
+) -> FreshnessState:
     if snapshot is None:
         return FreshnessState(
             code="never-refreshed",
             reason="source has never been refreshed",
         )
-    return _freshness_state(snapshot)
-
-
-def _freshness_state(snapshot: Snapshot) -> FreshnessState:
+    if document_count == 0:
+        return FreshnessState(
+            code="unhealthy-empty",
+            reason="zero documents in active snapshot",
+        )
     if snapshot.status is SnapshotStatus.STALE:
         return FreshnessState(
             code="stale-advisory",
