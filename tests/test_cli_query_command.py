@@ -306,6 +306,12 @@ class QueryCommandContractTest(unittest.TestCase):
             payload["hits"][0]["source_locator"], "https://docs.example.com/docs"
         )
         self.assertIn("snippet", payload["hits"][0])
+        self.assertEqual(
+            payload["hits"][0]["matched_terms"], ["shared", "query", "text"]
+        )
+        self.assertEqual(
+            payload["hits"][0]["match_query"], '"shared" AND "query" AND "text"'
+        )
 
     def test_query_json_source_filter_narrows_results(self) -> None:
         with self.runner.isolated_filesystem():

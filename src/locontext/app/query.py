@@ -29,6 +29,8 @@ class QueryResultHit:
     chunk_id: str
     chunk_index: int
     score: float
+    matched_terms: list[str]
+    match_query: str
     section_path: list[str]
     snippet: str
     text: str
@@ -78,6 +80,8 @@ def query_local_json(
     source_id: str | None = None,
 ) -> QueryResultEnvelope:
     hits = query_local(store, text, limit=limit, source_id=source_id)
+    query_terms = [term for term in text.split() if term]
+    match_query = _build_match_query(query_terms)
     source_cache: dict[str, str] = {}
     document_cache: dict[str, dict[str, str]] = {}
     result_hits: list[QueryResultHit] = []
@@ -111,6 +115,8 @@ def query_local_json(
                 chunk_id=hit.chunk_id,
                 chunk_index=hit.chunk_index,
                 score=hit.score,
+                matched_terms=_matched_terms(hit.text, query_terms),
+                match_query=match_query,
                 section_path=section_list,
                 snippet=_build_snippet(hit.text, text),
                 text=hit.text,
@@ -146,3 +152,12 @@ def _build_snippet(text: str, query_text: str, *, max_chars: int = 160) -> str:
     if end < len(normalized):
         snippet = f"{snippet}..."
     return snippet
+
+
+def _matched_terms(text: str, query_terms: list[str]) -> list[str]:
+    lower = text.lower()
+    return [term for term in query_terms if term.lower() in lower]
+
+
+def _build_match_query(query_terms: list[str]) -> str:
+    return " AND ".join(f'"{term}"' for term in query_terms)
