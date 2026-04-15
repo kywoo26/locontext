@@ -5,7 +5,7 @@ from dataclasses import asdict, dataclass
 from importlib import import_module
 from typing import Protocol, cast
 
-from ..domain.contracts import QueryEngine
+from ..domain.contracts import QueryEngine, QueryEngineDescriptor
 from ..domain.models import QueryHit
 from ..store.sqlite import SQLiteStore
 
@@ -57,6 +57,14 @@ class QueryResultEnvelope:
         }
 
 
+def describe_local_query_engine(store: SQLiteStore) -> QueryEngineDescriptor:
+    engine = _load_query_engine(store)
+    describe = getattr(engine, "describe", None)
+    if callable(describe):
+        return cast(QueryEngineDescriptor, describe())
+    return _baseline_descriptor_for(engine)
+
+
 def query_local(
     store: SQLiteStore,
     text: str,
@@ -64,11 +72,7 @@ def query_local(
     limit: int,
     source_id: str | None = None,
 ) -> list[QueryHit]:
-    module = cast(
-        _EngineModule,
-        cast(object, import_module("locontext.engine.sqlite_lexical")),
-    )
-    engine = module.SQLiteLexicalEngine(store.connection)
+    engine = _load_query_engine(store)
     return list(engine.query(text, limit=limit, source_id=source_id))
 
 
@@ -161,3 +165,27 @@ def _matched_terms(text: str, query_terms: list[str]) -> list[str]:
 
 def _build_match_query(query_terms: list[str]) -> str:
     return " AND ".join(f'"{term}"' for term in query_terms)
+
+
+def _load_query_engine(store: SQLiteStore) -> QueryEngine:
+    module = cast(
+        _EngineModule,
+        cast(object, import_module("locontext.engine.sqlite_lexical")),
+    )
+    return module.SQLiteLexicalEngine(store.connection)
+
+
+def _baseline_descriptor_for(engine: QueryEngine) -> QueryEngineDescriptor:
+    engine_type = type(engine)
+    if (
+        engine_type.__module__ == "locontext.engine.sqlite_lexical"
+        and engine_type.__name__ == "SQLiteLexicalEngine"
+    ):
+        return QueryEngineDescriptor(
+            engine_kind="lexical",
+            engine_name="sqlite_lexical",
+            semantic_ready=False,
+            is_baseline=True,
+        )
+    msg = f"query engine {engine_type.__module__}.{engine_type.__name__} must define describe()"
+    raise TypeError(msg)
