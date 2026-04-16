@@ -279,7 +279,7 @@ class WebDocsetCrawlPolicyTest(unittest.TestCase):
                     requested_locator=f"{base_url}/code-yeongyu/oh-my-openagent",
                     resolved_locator=f"{base_url}/code-yeongyu/oh-my-openagent",
                     canonical_locator=f"{base_url}/code-yeongyu/oh-my-openagent",
-                    docset_root=f"{base_url}",
+                    docset_root=f"{base_url}/code-yeongyu/oh-my-openagent",
                 )
                 store.upsert_source(source)
 
@@ -300,6 +300,56 @@ class WebDocsetCrawlPolicyTest(unittest.TestCase):
                     [
                         f"{base_url}/code-yeongyu/oh-my-openagent",
                         f"{base_url}/code-yeongyu/oh-my-openagent/blob/main/README.md",
+                    ],
+                )
+
+    def test_refresh_rejects_unrelated_pages_for_article_leaf_roots(self) -> None:
+        with tempfile.TemporaryDirectory():
+            routes = {
+                "/blog/post": b'<html><head><title>Post</title></head><body><h1>Post</h1><p>Local article.</p><a href="/blog/post/comments">Comments</a><a href="/blog/archive">Archive</a><a href="/docs/guide">Docs guide</a></body></html>',
+                "/blog/post/comments": b"<html><head><title>Comments</title></head><body><h1>Comments</h1><p>Replies.</p></body></html>",
+                "/blog/archive": b"<html><head><title>Archive</title></head><body><h1>Archive</h1></body></html>",
+                "/docs/guide": b"<html><head><title>Guide</title></head><body><h1>Guide</h1></body></html>",
+            }
+
+            with _serve_fixture(routes) as (base_url, requests):
+                connection = sqlite3.connect(":memory:")
+                self.addCleanup(connection.close)
+                store = SQLiteStore(connection)
+                store.ensure_schema()
+                source = Source(
+                    source_id="source-1",
+                    source_kind=SourceKind.WEB,
+                    requested_locator=f"{base_url}/blog/post",
+                    resolved_locator=f"{base_url}/blog/post",
+                    canonical_locator=f"{base_url}/blog/post",
+                    docset_root=f"{base_url}/blog/post",
+                )
+                store.upsert_source(source)
+
+                client = httpx.Client(follow_redirects=True, timeout=5.0)
+                self.addCleanup(client.close)
+                provider = WebDiscoveryProvider(client=client)
+                engine = _RecordingIndexingEngine()
+                orchestrator = RefreshOrchestrator(store, provider, engine)
+
+                result = orchestrator.refresh_source("source-1")
+                snapshot_id = result.snapshot_id
+                if snapshot_id is None:
+                    self.fail("expected snapshot id")
+
+                stored_documents = store.list_documents(snapshot_id)
+
+                self.assertEqual(
+                    requests,
+                    ["/blog/post", "/blog/post/comments"],
+                )
+                self.assertEqual(result.document_count, 2)
+                self.assertEqual(
+                    [item.canonical_locator for item in stored_documents],
+                    [
+                        f"{base_url}/blog/post",
+                        f"{base_url}/blog/post/comments",
                     ],
                 )
 

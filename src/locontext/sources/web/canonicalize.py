@@ -6,6 +6,7 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 _DEFAULT_PORTS = {"http": 80, "https": 443}
 _STRIP_PARAMS = {"fbclid", "gclid"}
 _ROOT_HINT_SEGMENTS = {"docs", "doc", "documentation", "api", "reference", "sdk", "cli"}
+_ARTICLE_HINT_SEGMENTS = {"article", "articles", "blog", "news", "post", "posts"}
 
 
 @dataclass(slots=True)
@@ -34,6 +35,7 @@ def infer_docset_root(locator: str) -> str:
     parsed = urlparse(_normalize_url(locator))
     host_root = urlunparse((parsed.scheme, parsed.netloc, "", "", "", ""))
     path = parsed.path or ""
+    parts = [part for part in path.split("/") if part]
 
     if path.endswith("/llms-full.txt"):
         return host_root + path.removesuffix("/llms-full.txt")
@@ -44,9 +46,17 @@ def infer_docset_root(locator: str) -> str:
     if host.startswith(("docs.", "doc.", "api.")):
         return host_root
 
-    parts = [part for part in path.split("/") if part]
+    if host == "github.com" and len(parts) >= 2:
+        if len(parts) == 2:
+            return f"{host_root}/{parts[0]}/{parts[1]}"
+        if parts[2].lower() in {"blob", "tree"}:
+            return f"{host_root}/{parts[0]}/{parts[1]}"
+
     if parts and parts[0].lower() in _ROOT_HINT_SEGMENTS:
         return f"{host_root}/{parts[0]}"
+
+    if len(parts) >= 2 and parts[0].lower() in _ARTICLE_HINT_SEGMENTS:
+        return host_root + path
 
     return host_root
 

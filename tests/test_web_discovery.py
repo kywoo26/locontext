@@ -7,14 +7,14 @@ from locontext.sources.web.discovery import filter_and_order_discovered_document
 
 
 class WebDiscoveryPolicyTest(unittest.TestCase):
-    def _source(self) -> Source:
+    def _source(self, docset_root: str = "https://docs.example.com/docs") -> Source:
         return Source(
             source_id="source-1",
             source_kind=SourceKind.WEB,
             requested_locator="https://docs.example.com/docs",
             resolved_locator="https://docs.example.com/docs",
             canonical_locator="https://docs.example.com/docs",
-            docset_root="https://docs.example.com/docs",
+            docset_root=docset_root,
         )
 
     def test_filters_same_host_only(self) -> None:
@@ -59,6 +59,68 @@ class WebDiscoveryPolicyTest(unittest.TestCase):
         self.assertEqual(
             [item.canonical_locator for item in ordered],
             ["https://docs.example.com/docs/guide"],
+        )
+
+    def test_filters_repo_root_scope_before_off_scope_chrome_pages(self) -> None:
+        ordered = filter_and_order_discovered_documents(
+            self._source("https://github.com/code-yeongyu/oh-my-openagent"),
+            [
+                DiscoveredDocument(
+                    requested_locator="https://github.com/code-yeongyu/oh-my-openagent",
+                    resolved_locator="https://github.com/code-yeongyu/oh-my-openagent",
+                    canonical_locator="https://github.com/code-yeongyu/oh-my-openagent",
+                ),
+                DiscoveredDocument(
+                    requested_locator="https://github.com/collections",
+                    resolved_locator="https://github.com/collections",
+                    canonical_locator="https://github.com/collections",
+                ),
+                DiscoveredDocument(
+                    requested_locator="https://github.com/pricing",
+                    resolved_locator="https://github.com/pricing",
+                    canonical_locator="https://github.com/pricing",
+                ),
+            ],
+        )
+
+        self.assertEqual(
+            [item.canonical_locator for item in ordered],
+            ["https://github.com/code-yeongyu/oh-my-openagent"],
+        )
+
+    def test_filters_article_leaf_scope_before_unrelated_host_pages(self) -> None:
+        ordered = filter_and_order_discovered_documents(
+            self._source("https://news.example.com/blog/post"),
+            [
+                DiscoveredDocument(
+                    requested_locator="https://news.example.com/blog/post",
+                    resolved_locator="https://news.example.com/blog/post",
+                    canonical_locator="https://news.example.com/blog/post",
+                ),
+                DiscoveredDocument(
+                    requested_locator="https://news.example.com/blog/post/comments",
+                    resolved_locator="https://news.example.com/blog/post/comments",
+                    canonical_locator="https://news.example.com/blog/post/comments",
+                ),
+                DiscoveredDocument(
+                    requested_locator="https://news.example.com/blog/archive",
+                    resolved_locator="https://news.example.com/blog/archive",
+                    canonical_locator="https://news.example.com/blog/archive",
+                ),
+                DiscoveredDocument(
+                    requested_locator="https://news.example.com/docs/guide",
+                    resolved_locator="https://news.example.com/docs/guide",
+                    canonical_locator="https://news.example.com/docs/guide",
+                ),
+            ],
+        )
+
+        self.assertEqual(
+            [item.canonical_locator for item in ordered],
+            [
+                "https://news.example.com/blog/post",
+                "https://news.example.com/blog/post/comments",
+            ],
         )
 
     def test_dedupes_canonical_locators(self) -> None:
