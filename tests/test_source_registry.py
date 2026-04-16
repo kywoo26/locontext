@@ -37,6 +37,48 @@ class SourceRegistryTest(unittest.TestCase):
         )
         self.assertEqual(result.source.docset_root, "https://docs.example.com")
 
+    def test_register_source_persists_narrowed_docset_root_for_new_github_repo(
+        self,
+    ) -> None:
+        result = register_source(
+            self.store,
+            "https://github.com/org/repo/blob/main/README.md?utm_source=test",
+        )
+
+        self.assertTrue(result.created)
+        self.assertEqual(
+            result.source.canonical_locator,
+            "https://github.com/org/repo/blob/main/README.md",
+        )
+        self.assertEqual(result.source.docset_root, "https://github.com/org/repo")
+
+        stored = self.store.get_source(result.source.source_id)
+        self.assertIsNotNone(stored)
+        assert stored is not None
+        self.assertEqual(stored.docset_root, "https://github.com/org/repo")
+
+    def test_register_source_persists_narrowed_docset_root_for_new_article_leaf(
+        self,
+    ) -> None:
+        result = register_source(
+            self.store,
+            "https://example.com/blog/post-slug?utm_source=test#intro",
+        )
+
+        self.assertTrue(result.created)
+        self.assertEqual(
+            result.source.canonical_locator,
+            "https://example.com/blog/post-slug",
+        )
+        self.assertEqual(
+            result.source.docset_root, "https://example.com/blog/post-slug"
+        )
+
+        stored = self.store.get_source(result.source.source_id)
+        self.assertIsNotNone(stored)
+        assert stored is not None
+        self.assertEqual(stored.docset_root, "https://example.com/blog/post-slug")
+
     def test_register_source_dedupes_equivalent_urls(self) -> None:
         first = register_source(
             self.store,
