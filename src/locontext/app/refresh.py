@@ -6,12 +6,15 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from importlib import import_module
 from typing import Final, Protocol, cast
+from urllib.parse import urlparse
 from uuid import uuid4
 
 from ..domain.contracts import DiscoveryProvider, IndexingEngine
 from ..domain.models import DiscoveredDocument, Snapshot, SnapshotStatus, Source
 from ..sources.web.discovery import filter_and_order_discovered_documents
 from ..store.sqlite import SQLiteStore
+
+_GITHUB_REFRESH_RULESET_VERSION = "github-refresh-rules-v2"
 
 
 @dataclass(slots=True)
@@ -45,7 +48,7 @@ class RefreshOrchestrator:
         source = self._require_source(source_id)
         discovery = self._discovery_provider.discover(source)
         ordered = filter_and_order_discovered_documents(source, discovery.documents)
-        manifest_hash = _manifest_hash(ordered)
+        manifest_hash = _manifest_hash(source, ordered)
 
         active_snapshot = self._store.get_active_snapshot(source_id)
         if (
@@ -128,7 +131,7 @@ class RefreshOrchestrator:
         return source
 
 
-def _manifest_hash(documents: list[DiscoveredDocument]) -> str:
+def _manifest_hash(source: Source, documents: list[DiscoveredDocument]) -> str:
     payload = "\n".join(
         "|".join(
             [
@@ -141,7 +144,17 @@ def _manifest_hash(documents: list[DiscoveredDocument]) -> str:
         )
         for document in documents
     )
+    if _is_github_repo_source(source):
+        payload = "\n".join([payload, _GITHUB_REFRESH_RULESET_VERSION])
     return sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _is_github_repo_source(source: Source) -> bool:
+    parsed = urlparse(source.docset_root)
+    return (
+        parsed.netloc.lower() == "github.com"
+        and len(tuple(part for part in parsed.path.split("/") if part)) >= 2
+    )
 
 
 @dataclass(slots=True, frozen=True)
