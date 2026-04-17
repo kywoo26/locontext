@@ -189,6 +189,158 @@ class WebDocsetCrawlPolicyTest(unittest.TestCase):
                     ],
                 )
 
+    def test_refresh_keeps_github_management_pages_but_skips_chrome_and_repo_sibling_pages(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            repo_root = root / "repo"
+            repo_root.mkdir()
+
+            root_html = "".join(
+                [
+                    "<html><head><title>Repo</title></head><body>",
+                    '<a href="/repo/collections">Collections</a>',
+                    '<a href="/repo/search?l=css">Search CSS</a>',
+                    '<a href="/repo/marketplace">Marketplace</a>',
+                    '<a href="/repo/releases">Releases</a>',
+                    '<a href="/repo/issues">Issues</a>',
+                    '<a href="/repo/pulls">Pulls</a>',
+                    '<a href="/repo/compare/main...HEAD">Compare</a>',
+                    '<a href="/repo/blob/main/README.md">README</a>',
+                    '<a href="/repo/wiki">Wiki</a>',
+                    '<a href="/repo/tree/main/docs/guide.md">Docs</a>',
+                    '<a href="/repo-foo/blob/main/README.md">Sibling</a>',
+                    "</body></html>",
+                ]
+            )
+            readme_html = "<html><head><title>README</title></head><body>install api</body></html>"
+            wiki_html = (
+                "<html><head><title>Wiki</title></head><body>how to use</body></html>"
+            )
+            docs_html = "<html><head><title>Docs</title></head><body>configuration</body></html>"
+            collections_html = "<html><head><title>Collections</title></head><body>collections</body></html>"
+            search_html = (
+                "<html><head><title>Search</title></head><body>search</body></html>"
+            )
+            marketplace_html = "<html><head><title>Marketplace</title></head><body>marketplace</body></html>"
+            releases_html = "<html><head><title>Releases</title></head><body>release notes</body></html>"
+            issues_html = "<html><head><title>Issues</title></head><body>open issues</body></html>"
+            pulls_html = "<html><head><title>Pulls</title></head><body>pull requests</body></html>"
+            compare_html = "<html><head><title>Compare</title></head><body>compare versions</body></html>"
+            sibling_html = "<html><head><title>Sibling</title></head><body>sibling repo</body></html>"
+
+            _ = (repo_root / "index.html").write_text(root_html, encoding="utf-8")
+            _ = (repo_root / "README.md").write_text(readme_html, encoding="utf-8")
+            _ = (repo_root / "wiki").mkdir()
+            _ = (repo_root / "wiki" / "index.html").write_text(
+                wiki_html, encoding="utf-8"
+            )
+            _ = (repo_root / "tree").mkdir()
+            _ = (repo_root / "tree" / "main").mkdir()
+            _ = (repo_root / "tree" / "main" / "docs").mkdir(
+                parents=True, exist_ok=True
+            )
+            _ = (repo_root / "tree" / "main" / "docs" / "guide.md").write_text(
+                docs_html, encoding="utf-8"
+            )
+            _ = (repo_root / "releases").write_text(releases_html, encoding="utf-8")
+            _ = (repo_root / "issues").write_text(issues_html, encoding="utf-8")
+            _ = (repo_root / "pulls").write_text(pulls_html, encoding="utf-8")
+            _ = (repo_root / "compare").mkdir()
+            _ = (repo_root / "compare" / "main...HEAD").write_text(
+                compare_html, encoding="utf-8"
+            )
+            sibling_root = root / "repo-foo"
+            sibling_root.mkdir()
+            _ = (sibling_root / "blob").mkdir()
+            _ = (sibling_root / "blob" / "main").mkdir(parents=True, exist_ok=True)
+            _ = (sibling_root / "blob" / "main" / "README.md").write_text(
+                sibling_html, encoding="utf-8"
+            )
+
+            routes = {
+                "/repo": (repo_root / "index.html").read_bytes(),
+                "/repo/collections": collections_html.encode("utf-8"),
+                "/repo/search?l=css": search_html.encode("utf-8"),
+                "/repo/marketplace": marketplace_html.encode("utf-8"),
+                "/repo/releases": releases_html.encode("utf-8"),
+                "/repo/issues": issues_html.encode("utf-8"),
+                "/repo/pulls": pulls_html.encode("utf-8"),
+                "/repo/compare/main...HEAD": compare_html.encode("utf-8"),
+                "/repo/blob/main/README.md": (repo_root / "README.md").read_bytes(),
+                "/repo/wiki": (repo_root / "wiki" / "index.html").read_bytes(),
+                "/repo/tree/main/docs/guide.md": (
+                    repo_root / "tree" / "main" / "docs" / "guide.md"
+                ).read_bytes(),
+                "/repo-foo/blob/main/README.md": (
+                    sibling_root / "blob" / "main" / "README.md"
+                ).read_bytes(),
+            }
+
+            with _serve_fixture(routes) as (base_url, requests):
+                connection = sqlite3.connect(":memory:")
+                self.addCleanup(connection.close)
+                store = SQLiteStore(connection)
+                store.ensure_schema()
+                source = Source(
+                    source_id="source-1",
+                    source_kind=SourceKind.WEB,
+                    requested_locator=f"{base_url}/repo",
+                    resolved_locator=f"{base_url}/repo",
+                    canonical_locator=f"{base_url}/repo",
+                    docset_root=f"{base_url}/repo",
+                )
+                store.upsert_source(source)
+
+                client = httpx.Client(follow_redirects=True, timeout=5.0)
+                self.addCleanup(client.close)
+                provider = WebDiscoveryProvider(client=client)
+                engine = _RecordingIndexingEngine()
+                orchestrator = RefreshOrchestrator(store, provider, engine)
+
+                result = orchestrator.refresh_source("source-1")
+                active_snapshot = store.get_active_snapshot("source-1")
+
+                self.assertTrue(result.changed)
+                self.assertEqual(result.document_count, 8)
+                snapshot_id = result.snapshot_id
+                if snapshot_id is None:
+                    self.fail("expected a snapshot id")
+                if active_snapshot is None:
+                    self.fail("expected an active snapshot")
+                self.assertEqual(active_snapshot.snapshot_id, snapshot_id)
+                self.assertEqual(
+                    requests,
+                    [
+                        "/repo",
+                        "/repo/blob/main/README.md",
+                        "/repo/wiki",
+                        "/repo/tree/main/docs/guide.md",
+                        "/repo/compare/main...HEAD",
+                        "/repo/issues",
+                        "/repo/pulls",
+                        "/repo/releases",
+                    ],
+                )
+                self.assertEqual(engine.reindex_calls, [("source-1", snapshot_id, 8)])
+
+                stored_documents = store.list_documents(snapshot_id)
+                self.assertEqual(len(stored_documents), 8)
+                self.assertEqual(
+                    [item.canonical_locator for item in stored_documents],
+                    [
+                        f"{base_url}/repo",
+                        f"{base_url}/repo/blob/main/README.md",
+                        f"{base_url}/repo/wiki",
+                        f"{base_url}/repo/tree/main/docs/guide.md",
+                        f"{base_url}/repo/compare/main...HEAD",
+                        f"{base_url}/repo/issues",
+                        f"{base_url}/repo/pulls",
+                        f"{base_url}/repo/releases",
+                    ],
+                )
+
     def test_seed_counts_toward_max_pages(self) -> None:
         ordered = filter_and_order_discovered_documents(
             self._source(),
