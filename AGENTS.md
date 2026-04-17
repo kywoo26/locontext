@@ -2,27 +2,6 @@
 
 This is the root AGENTS file for locontext. It defines repo-wide rules. Add child `AGENTS.md` files only when a subtree develops materially different conventions.
 
-## Commands
-
-```bash
-# Setup
-uv sync --group dev
-uv run pre-commit install
-
-# Quality
-uv run ruff check src/locontext tests
-uv run ruff format --check src/locontext tests
-uv run ty check
-
-# Tests
-uv run pytest
-uv run pytest -m integration
-
-# Verification
-uv run python -m compileall src tests
-uv run locontext --help
-```
-
 ## Toolchain
 
 - **Runtime**: Python 3.13+ managed by `uv`
@@ -32,20 +11,9 @@ uv run locontext --help
 - **Lint/Format**: `ruff`
 - **Test Runner**: `pytest`
 
-## Structure
-
-- `src/locontext/domain/` — lifecycle models and contracts
-- `src/locontext/app/` — use-case orchestration
-- `src/locontext/sources/` — source discovery and canonicalization logic
-- `src/locontext/store/` — project-local SQLite state
-- `src/locontext/cli/` — CLI adapter layer only
-- `tests/` — unit and integration-style local verification
-- `docs/adr/` — architectural decisions
-
 ## Always
 
 - Execute repo tooling through `uv run`.
-- Keep `locontext` Python-first, CLI-first, and local-first.
 - Keep the future Rust replacement boundary limited to engine/query concerns.
 - Keep business logic out of the CLI layer.
 - Prefer stdlib/dataclasses/protocols in core layers unless a library clearly reduces real complexity.
@@ -66,6 +34,7 @@ uv run locontext --help
 - Add network-dependent tests to the default test loop.
 - Put source lifecycle or refresh orchestration logic into CLI commands.
 - Commit secrets, credentials, or `.env` files.
+- Add agent co-author markers (e.g., `Co-authored-by:`, `Ultraworked with`) to commits.
 
 ## Verification Matrix
 
@@ -76,7 +45,27 @@ uv run locontext --help
 | Source / refresh / store logic | `uv run pytest && uv run ty check && uv run ruff check src/locontext tests` |
 | Tests / fixtures | `uv run pytest && uv run ruff check src/locontext tests` |
 | Integration check | `uv run pytest --override-ini addopts="-ra --import-mode=importlib" -m integration` |
-| PR preflight | `uv run ruff check src/locontext tests && uv run ruff format --check src/locontext tests && uv run ty check && uv run pytest && uv run pytest --override-ini addopts="-ra --import-mode=importlib" -m integration && uv run python -m compileall src tests` |
+| PR preflight | `uv run ruff check src/locontext tests && uv run ruff format --check src/locontext tests && uv run ty check && uv run pytest && uv run pytest --override-ini addopts="-ra --import-mode=importlib" -m integration` |
+
+## Ownership
+
+| Path | Role | Governance Owner |
+| :--- | :--- | :--- |
+| `src/locontext/` | Runtime code | Root `AGENTS.md` |
+| `tests/` | Verification | Root `AGENTS.md` |
+| `.github/` | CI / repo workflow surface | Root `AGENTS.md` |
+| `docs/adr/` | Architecture contracts | Root `AGENTS.md` |
+
+## PR Discipline
+
+- Maintain atomic commits by concern.
+- Run the `PR preflight` verification matrix command before opening.
+- Reference issues in the footer if applicable: `Refs: #N` or `Fixes: #N`.
+
+## Branch Naming
+
+Use `type/description` where type matches the intent:
+`feat/`, `fix/`, `docs/`, `refactor/`, `test/`, `ci/`, `deps/`
 
 ## Path Contract
 
