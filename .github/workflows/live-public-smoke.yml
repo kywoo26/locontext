@@ -1,0 +1,48 @@
+name: Live Public Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      output_dir:
+        description: Directory for structured smoke artifacts
+        required: false
+        default: artifacts/live-public-smoke
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Live Public Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: live-public-smoke-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up uv with Python 3.13
+        uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57 # v8.0.0
+        with:
+          python-version: "3.13"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+          save-cache: false
+
+      - name: Install dependencies
+        run: uv sync --group dev --locked
+
+      - name: Run live smoke harness
+        env:
+          OUTPUT_DIR: ${{ inputs.output_dir }}
+        run: |
+          uv run python -c "from pathlib import Path; import os; from locontext.dev.live_public_smoke import main; result = main(Path(os.environ['OUTPUT_DIR'])); print(result['report_path']); print(result['run_log_path'])"
+
+      - name: Upload smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-public-smoke
+          path: ${{ inputs.output_dir }}/**

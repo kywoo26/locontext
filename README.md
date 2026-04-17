@@ -26,6 +26,18 @@ Local-first context engine for docs grounding.
 - A dev-only baseline command is available via `python -m locontext.dev.eval_query_quality --fixture <name>`.
 - It is intended for deterministic local regression checks, not end-user product surface.
 
+## Live public-source smoke harness
+
+- A dev-only smoke harness is available via `python -m locontext.dev.live_public_smoke --output-dir artifacts/live-public-smoke`.
+- It measures refresh and query behavior against a curated set of public documentation sources.
+- Results are captured in `report.json` and `run.log` within a timestamped run directory.
+- A manual GitHub Actions workflow `live-public-smoke.yml` is available for running this harness in CI and retaining artifacts for evidence.
+- Status vocabulary:
+    - `pass`: Top hit is within the accepted locator set and no warning budget breach.
+    - `warn`: Warning budget breached but top hit is still accepted.
+    - `fail`: Source refresh failed, zero documents/hits, or top hit is not accepted.
+- Success invariant: The harness uses accepted top locator sets per source to determine quality, rather than brittle exact snippet matching.
+
 ## Bootstrap
 
 ```bash
