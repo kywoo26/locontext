@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from typing import Final, cast
+from urllib.parse import urlparse
 
 from ..domain.models import (
     Chunk,
@@ -17,6 +19,44 @@ from ..domain.models import (
     SourceSetMember,
 )
 from .migrations import apply_migrations
+
+_QUERY_TERM_PATTERN: Final[re.Pattern[str]] = re.compile(r"[0-9A-Za-z_]+")
+_GITHUB_OPERATIONAL_TERMS: Final[frozenset[str]] = frozenset(
+    {
+        "agent",
+        "agents",
+        "claude",
+        "command",
+        "commands",
+        "instructions",
+        "llm",
+        "llms",
+        "prompt",
+        "prompts",
+        "workflow",
+        "workflows",
+    }
+)
+_GITHUB_MANAGEMENT_TERMS: Final[frozenset[str]] = frozenset(
+    {
+        "changelog",
+        "compare",
+        "issue",
+        "issues",
+        "milestone",
+        "milestones",
+        "note",
+        "notes",
+        "pr",
+        "prs",
+        "pull",
+        "pulls",
+        "release",
+        "releases",
+        "version",
+        "versions",
+    }
+)
 
 
 class SQLiteStore:
@@ -478,10 +518,11 @@ class SQLiteStore:
     ) -> list[QueryHit]:
         where_filter = "AND chunks.source_id = ?" if source_id is not None else ""
         parameters: tuple[object, ...]
+        fetch_limit = max(limit * 10, limit) if limit > 0 else limit
         if source_id is None:
-            parameters = (match_query, limit)
+            parameters = (match_query, fetch_limit)
         else:
-            parameters = (match_query, source_id, limit)
+            parameters = (match_query, source_id, fetch_limit)
         rows = cast(
             list[sqlite3.Row],
             self._connection.execute(
@@ -494,10 +535,14 @@ class SQLiteStore:
                     chunks.chunk_index,
                     chunks.text,
                     chunks.metadata_json,
+                    documents.canonical_locator AS document_locator,
+                    sources.canonical_locator AS source_locator,
                     bm25(chunk_fts) AS score
                 FROM chunk_fts
                 JOIN chunks ON chunks.rowid = chunk_fts.rowid
+                JOIN documents ON documents.document_id = chunks.document_id
                 JOIN snapshots ON snapshots.snapshot_id = chunks.snapshot_id
+                JOIN sources ON sources.source_id = chunks.source_id
                 WHERE chunk_fts MATCH ?
                   AND snapshots.is_active = 1
                   {where_filter}
@@ -512,6 +557,7 @@ class SQLiteStore:
                 parameters,
             ).fetchall(),
         )
+        ranked_rows = _rerank_github_repo_rows(match_query, rows)
         return [
             QueryHit(
                 source_id=cast(str, row["source_id"]),
@@ -526,7 +572,7 @@ class SQLiteStore:
                     json.loads(cast(str, row["metadata_json"]) or "{}"),
                 ),
             )
-            for row in rows
+            for row in ranked_rows[:limit]
         ]
 
     def activate_snapshot(self, source_id: str, snapshot_id: str) -> None:
@@ -585,3 +631,149 @@ def _snapshot_from_row(row: sqlite3.Row) -> Snapshot:
         last_modified=cast(str | None, row["last_modified"]),
         is_active=bool(cast(int, row["is_active"])),
     )
+
+
+def _rerank_github_repo_rows(
+    match_query: str, rows: list[sqlite3.Row]
+) -> list[sqlite3.Row]:
+    if len(rows) <= 1:
+        return rows
+    repo_roots = {
+        repo_root
+        for row in rows
+        for repo_root in [_github_repo_root(cast(str, row["document_locator"]))]
+        if repo_root is not None
+    }
+    if len(repo_roots) != 1:
+        return rows
+    if any(
+        _github_repo_root(cast(str, row["document_locator"])) is None for row in rows
+    ):
+        return rows
+    intent = _classify_github_query_intent(match_query)
+    enumerated_rows = list(enumerate(rows))
+    enumerated_rows.sort(
+        key=lambda item: (
+            _github_locator_rank(
+                intent=intent,
+                document_locator=cast(str, item[1]["document_locator"]),
+            ),
+            float(cast(int | float, item[1]["score"])),
+            cast(str, item[1]["source_id"]),
+            cast(str, item[1]["snapshot_id"]),
+            cast(str, item[1]["document_id"]),
+            cast(int, item[1]["chunk_index"]),
+            item[0],
+        )
+    )
+    return [row for _, row in enumerated_rows]
+
+
+def _classify_github_query_intent(match_query: str) -> str:
+    terms = cast(list[str], _QUERY_TERM_PATTERN.findall(match_query))
+    normalized_query = " ".join(term.lower() for term in terms)
+    query_terms = {term.lower() for term in terms}
+    if query_terms & _GITHUB_MANAGEMENT_TERMS:
+        return "repo-management"
+    if (
+        query_terms & _GITHUB_OPERATIONAL_TERMS
+        or "how to work in this repo" in normalized_query
+    ):
+        return "repo-operational"
+    return "repo-doc"
+
+
+def _github_locator_rank(*, intent: str, document_locator: str) -> tuple[int, int]:
+    category, subcategory = _github_document_category(document_locator)
+    if intent == "repo-management":
+        category_rank = {
+            "management": 0,
+            "guidance": 1,
+            "readme": 2,
+            "docs": 3,
+            "wiki": 4,
+            "repo-content": 5,
+            "other": 6,
+        }
+    elif intent == "repo-operational":
+        category_rank = {
+            "guidance": 0,
+            "readme": 1,
+            "docs": 2,
+            "wiki": 3,
+            "repo-content": 4,
+            "management": 5,
+            "other": 6,
+        }
+    else:
+        category_rank = {
+            "readme": 0,
+            "docs": 1,
+            "repo-content": 2,
+            "wiki": 3,
+            "guidance": 4,
+            "management": 5,
+            "other": 6,
+        }
+    return (category_rank.get(category, 6), subcategory)
+
+
+def _github_document_category(document_locator: str) -> tuple[str, int]:
+    locator = document_locator.lower()
+    if locator.endswith("/agents.md"):
+        return ("guidance", 0)
+    if locator.endswith("/claude.md"):
+        return ("guidance", 1)
+    if locator.endswith("/llms.txt"):
+        return ("guidance", 2)
+    if locator.endswith("/readme.md"):
+        return ("readme", 0)
+    management_category = _github_management_category(locator)
+    if management_category is not None:
+        return management_category
+    if locator.endswith("/wiki") or "/wiki/" in locator:
+        return ("wiki", 0)
+    if "/docs/" in locator:
+        return ("docs", 0)
+    if _is_github_repo_content_locator(locator):
+        return ("repo-content", 0)
+    return ("other", 0)
+
+
+def _is_github_repo_content_locator(locator: str) -> bool:
+    return any(
+        marker in locator
+        for marker in ("/blob/", "/tree/", "raw.githubusercontent.com/")
+    )
+
+
+def _github_management_category(locator: str) -> tuple[str, int] | None:
+    parsed = urlparse(locator)
+    if parsed.netloc.lower() != "github.com":
+        return None
+    path_parts = [part for part in parsed.path.split("/") if part]
+    if len(path_parts) < 3:
+        return None
+    family = path_parts[2]
+    if family == "releases":
+        return ("management", 0)
+    if family == "issues":
+        return ("management", 1)
+    if family == "pulls":
+        return ("management", 2)
+    if family == "compare":
+        return ("management", 3)
+    return None
+
+
+def _github_repo_root(locator: str) -> str | None:
+    if "github.com/" in locator:
+        _, _, suffix = locator.partition("github.com/")
+    elif "raw.githubusercontent.com/" in locator:
+        _, _, suffix = locator.partition("raw.githubusercontent.com/")
+    else:
+        return None
+    parts = [part for part in suffix.split("/") if part]
+    if len(parts) < 2:
+        return None
+    return "/".join(parts[:2])
