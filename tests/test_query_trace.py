@@ -17,6 +17,11 @@ from locontext.store.sqlite import SQLiteStore
 
 
 class _TraceHit(Protocol):
+    rank: int
+    source_locator: str
+    document_locator: str
+    section_path: list[str]
+    metadata: dict[str, object]
     matched_terms: list[str]
     match_query: str
 
@@ -64,7 +69,14 @@ class QueryTraceContractTest(unittest.TestCase):
                     canonical_locator="https://docs.example.com/docs/guide",
                     title="Guide",
                     content_hash="doc-hash-active",
-                )
+                ),
+                DiscoveredDocument(
+                    requested_locator="https://docs.example.com/docs/reference",
+                    resolved_locator="https://docs.example.com/docs/reference",
+                    canonical_locator="https://docs.example.com/docs/reference",
+                    title="Reference",
+                    content_hash="doc-hash-reference",
+                ),
             ],
         )
         store.replace_snapshot_chunks(
@@ -78,7 +90,16 @@ class QueryTraceContractTest(unittest.TestCase):
                     chunk_index=0,
                     text="shared query text from active content",
                     metadata={},
-                )
+                ),
+                Chunk(
+                    chunk_id=f"{documents[1].document_id}-chunk-0",
+                    source_id=source.source_id,
+                    snapshot_id=snapshot.snapshot_id,
+                    document_id=documents[1].document_id,
+                    chunk_index=0,
+                    text="shared query text from reference content",
+                    metadata={"section_path": ["Reference"]},
+                ),
             ],
         )
         store.activate_snapshot(source.source_id, snapshot.snapshot_id)
@@ -97,10 +118,23 @@ class QueryTraceContractTest(unittest.TestCase):
         store = self._seed_query_state()
         envelope = self._query_local_json(store, "shared query text")
 
+        self.assertEqual(
+            [hit.document_locator for hit in envelope.hits],
+            [
+                "https://docs.example.com/docs/guide",
+                "https://docs.example.com/docs/reference",
+            ],
+        )
+        self.assertEqual(envelope.hits[0].rank, 1)
+        self.assertEqual(
+            envelope.hits[0].source_locator, "https://docs.example.com/docs"
+        )
         self.assertEqual(envelope.hits[0].matched_terms, ["shared", "query", "text"])
         self.assertEqual(
             envelope.hits[0].match_query, '"shared" AND "query" AND "text"'
         )
+        self.assertEqual(envelope.hits[1].section_path, ["Reference"])
+        self.assertEqual(envelope.hits[1].metadata, {"section_path": ["Reference"]})
 
 
 if __name__ == "__main__":

@@ -17,6 +17,11 @@ class WebDiscoveryPolicyTest(unittest.TestCase):
             docset_root=docset_root,
         )
 
+    def _github_source(
+        self, docset_root: str = "https://github.com/code-yeongyu/oh-my-openagent"
+    ) -> Source:
+        return self._source(docset_root)
+
     def test_filters_same_host_only(self) -> None:
         ordered = filter_and_order_discovered_documents(
             self._source(),
@@ -86,6 +91,90 @@ class WebDiscoveryPolicyTest(unittest.TestCase):
         self.assertEqual(
             [item.canonical_locator for item in ordered],
             ["https://github.com/code-yeongyu/oh-my-openagent"],
+        )
+
+    def test_rejects_github_repo_boundary_sibling_paths(self) -> None:
+        ordered = filter_and_order_discovered_documents(
+            self._github_source(),
+            [
+                DiscoveredDocument(
+                    requested_locator="https://github.com/code-yeongyu/oh-my-openagent",
+                    resolved_locator="https://github.com/code-yeongyu/oh-my-openagent",
+                    canonical_locator="https://github.com/code-yeongyu/oh-my-openagent",
+                ),
+                DiscoveredDocument(
+                    requested_locator="https://github.com/code-yeongyu/oh-my-openagent-foo/blob/main/README.md",
+                    resolved_locator="https://github.com/code-yeongyu/oh-my-openagent-foo/blob/main/README.md",
+                    canonical_locator="https://github.com/code-yeongyu/oh-my-openagent-foo/blob/main/README.md",
+                ),
+            ],
+        )
+
+        self.assertEqual(
+            [item.canonical_locator for item in ordered],
+            ["https://github.com/code-yeongyu/oh-my-openagent"],
+        )
+
+    def test_prefers_github_docs_surfaces_over_management_and_chrome_pages(
+        self,
+    ) -> None:
+        ordered = filter_and_order_discovered_documents(
+            self._github_source(),
+            [
+                DiscoveredDocument(
+                    requested_locator="https://github.com/code-yeongyu/oh-my-openagent/blob/main/README.md",
+                    resolved_locator="https://github.com/code-yeongyu/oh-my-openagent/blob/main/README.md",
+                    canonical_locator="https://github.com/code-yeongyu/oh-my-openagent/blob/main/README.md",
+                ),
+                DiscoveredDocument(
+                    requested_locator="https://github.com/code-yeongyu/oh-my-openagent/tree/main/docs/guide.md",
+                    resolved_locator="https://github.com/code-yeongyu/oh-my-openagent/tree/main/docs/guide.md",
+                    canonical_locator="https://github.com/code-yeongyu/oh-my-openagent/tree/main/docs/guide.md",
+                ),
+                DiscoveredDocument(
+                    requested_locator="https://github.com/code-yeongyu/oh-my-openagent/wiki",
+                    resolved_locator="https://github.com/code-yeongyu/oh-my-openagent/wiki",
+                    canonical_locator="https://github.com/code-yeongyu/oh-my-openagent/wiki",
+                ),
+                DiscoveredDocument(
+                    requested_locator="https://github.com/code-yeongyu/oh-my-openagent/collections",
+                    resolved_locator="https://github.com/code-yeongyu/oh-my-openagent/collections",
+                    canonical_locator="https://github.com/code-yeongyu/oh-my-openagent/collections",
+                ),
+                DiscoveredDocument(
+                    requested_locator="https://github.com/code-yeongyu/oh-my-openagent/releases",
+                    resolved_locator="https://github.com/code-yeongyu/oh-my-openagent/releases",
+                    canonical_locator="https://github.com/code-yeongyu/oh-my-openagent/releases",
+                ),
+                DiscoveredDocument(
+                    requested_locator="https://github.com/code-yeongyu/oh-my-openagent/issues",
+                    resolved_locator="https://github.com/code-yeongyu/oh-my-openagent/issues",
+                    canonical_locator="https://github.com/code-yeongyu/oh-my-openagent/issues",
+                ),
+                DiscoveredDocument(
+                    requested_locator="https://github.com/code-yeongyu/oh-my-openagent/pulls",
+                    resolved_locator="https://github.com/code-yeongyu/oh-my-openagent/pulls",
+                    canonical_locator="https://github.com/code-yeongyu/oh-my-openagent/pulls",
+                ),
+                DiscoveredDocument(
+                    requested_locator="https://github.com/code-yeongyu/oh-my-openagent/compare/main...HEAD",
+                    resolved_locator="https://github.com/code-yeongyu/oh-my-openagent/compare/main...HEAD",
+                    canonical_locator="https://github.com/code-yeongyu/oh-my-openagent/compare/main...HEAD",
+                ),
+            ],
+        )
+
+        self.assertEqual(
+            [item.canonical_locator for item in ordered],
+            [
+                "https://github.com/code-yeongyu/oh-my-openagent/blob/main/README.md",
+                "https://github.com/code-yeongyu/oh-my-openagent/tree/main/docs/guide.md",
+                "https://github.com/code-yeongyu/oh-my-openagent/wiki",
+                "https://github.com/code-yeongyu/oh-my-openagent/compare/main...HEAD",
+                "https://github.com/code-yeongyu/oh-my-openagent/issues",
+                "https://github.com/code-yeongyu/oh-my-openagent/pulls",
+                "https://github.com/code-yeongyu/oh-my-openagent/releases",
+            ],
         )
 
     def test_filters_article_leaf_scope_before_unrelated_host_pages(self) -> None:

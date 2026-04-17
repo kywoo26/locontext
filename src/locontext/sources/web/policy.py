@@ -3,6 +3,22 @@ from __future__ import annotations
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
+_GITHUB_MANAGEMENT_SEGMENTS = {
+    "compare",
+    "issues",
+    "pulls",
+    "releases",
+}
+_GITHUB_CHROME_SEGMENTS = {
+    "collections",
+    "commits",
+    "insights",
+    "marketplace",
+    "pulse",
+    "search",
+    "tags",
+}
+
 
 @dataclass(slots=True, frozen=True)
 class WebPageSignals:
@@ -56,6 +72,10 @@ def decide_page_admission(
         reasons.append("seed_path_escape")
         return BoundaryDecision(accepted=False, reasons=tuple(reasons), score=-10.0)
 
+    if _is_github_repo_chrome(canonical_locator, seed_locator):
+        reasons.append("github_chrome")
+        return BoundaryDecision(accepted=False, reasons=tuple(reasons), score=-5.0)
+
     if _path_affinity(canonical_locator, seed_locator):
         score += 1.0
         reasons.append("path_affinity")
@@ -93,3 +113,20 @@ def _shared_prefix_depth(canonical_locator: str, seed_locator: str) -> int:
             break
         shared += 1
     return shared
+
+
+def _is_github_repo_chrome(canonical_locator: str, seed_locator: str) -> bool:
+    seed = urlparse(seed_locator)
+    candidate = urlparse(canonical_locator)
+    if seed.netloc.lower() != "github.com" or candidate.netloc.lower() != "github.com":
+        return False
+
+    seed_parts = [part for part in seed.path.split("/") if part]
+    candidate_parts = [part for part in candidate.path.split("/") if part]
+    if len(seed_parts) < 2 or len(candidate_parts) < len(seed_parts):
+        return False
+    if candidate_parts[:2] != seed_parts[:2]:
+        return False
+    if len(candidate_parts) == 2:
+        return False
+    return candidate_parts[2].lower() in _GITHUB_CHROME_SEGMENTS

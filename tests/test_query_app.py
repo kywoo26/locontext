@@ -25,12 +25,16 @@ class _QueryHitLike(Protocol):
     text: str
 
 
+class _QueryEnvelopeHitLike(Protocol):
+    document_locator: str
+
+
 class _QueryEnvelopeLike(Protocol):
     query_text: str
     limit: int
     source_id: str | None
     hit_count: int
-    hits: list[object]
+    hits: list[_QueryEnvelopeHitLike]
 
 
 class _QueryLocalJson(Protocol):
@@ -183,6 +187,153 @@ class QueryAppContractTest(unittest.TestCase):
         if active:
             self.store.activate_snapshot(self.source.source_id, snapshot_id)
 
+    def _seed_github_repo_snapshot(self) -> None:
+        snapshot = Snapshot(
+            snapshot_id="snapshot-github",
+            source_id=self.source.source_id,
+            status=SnapshotStatus.INDEXED,
+            content_hash="hash-snapshot-github",
+            is_active=True,
+        )
+        self.store.insert_snapshot(snapshot)
+        discovered_documents = [
+            DiscoveredDocument(
+                requested_locator="https://github.com/code-yeongyu/oh-my-openagent/blob/main/README.md",
+                resolved_locator="https://github.com/code-yeongyu/oh-my-openagent/blob/main/README.md",
+                canonical_locator="https://github.com/code-yeongyu/oh-my-openagent/blob/main/README.md",
+                title="README",
+                content_hash="doc-hash-readme",
+            ),
+            DiscoveredDocument(
+                requested_locator="https://github.com/code-yeongyu/oh-my-openagent/tree/main/docs/guide.md",
+                resolved_locator="https://github.com/code-yeongyu/oh-my-openagent/tree/main/docs/guide.md",
+                canonical_locator="https://github.com/code-yeongyu/oh-my-openagent/tree/main/docs/guide.md",
+                title="Guide",
+                content_hash="doc-hash-guide",
+            ),
+            DiscoveredDocument(
+                requested_locator="https://github.com/code-yeongyu/oh-my-openagent/blob/main/examples/install-api.md",
+                resolved_locator="https://github.com/code-yeongyu/oh-my-openagent/blob/main/examples/install-api.md",
+                canonical_locator="https://github.com/code-yeongyu/oh-my-openagent/blob/main/examples/install-api.md",
+                title="install-api.md",
+                content_hash="doc-hash-install-api",
+            ),
+            DiscoveredDocument(
+                requested_locator="https://github.com/code-yeongyu/oh-my-openagent/wiki",
+                resolved_locator="https://github.com/code-yeongyu/oh-my-openagent/wiki",
+                canonical_locator="https://github.com/code-yeongyu/oh-my-openagent/wiki",
+                title="Wiki",
+                content_hash="doc-hash-wiki",
+            ),
+            DiscoveredDocument(
+                requested_locator="https://github.com/code-yeongyu/oh-my-openagent/blob/main/AGENTS.md",
+                resolved_locator="https://github.com/code-yeongyu/oh-my-openagent/blob/main/AGENTS.md",
+                canonical_locator="https://github.com/code-yeongyu/oh-my-openagent/blob/main/AGENTS.md",
+                title="AGENTS.md",
+                content_hash="doc-hash-agents",
+            ),
+            DiscoveredDocument(
+                requested_locator="https://github.com/code-yeongyu/oh-my-openagent/blob/main/CLAUDE.md",
+                resolved_locator="https://github.com/code-yeongyu/oh-my-openagent/blob/main/CLAUDE.md",
+                canonical_locator="https://github.com/code-yeongyu/oh-my-openagent/blob/main/CLAUDE.md",
+                title="CLAUDE.md",
+                content_hash="doc-hash-claude",
+            ),
+            DiscoveredDocument(
+                requested_locator="https://github.com/code-yeongyu/oh-my-openagent/blob/main/llms.txt",
+                resolved_locator="https://github.com/code-yeongyu/oh-my-openagent/blob/main/llms.txt",
+                canonical_locator="https://github.com/code-yeongyu/oh-my-openagent/blob/main/llms.txt",
+                title="llms.txt",
+                content_hash="doc-hash-llms",
+            ),
+            DiscoveredDocument(
+                requested_locator="https://github.com/code-yeongyu/oh-my-openagent/releases",
+                resolved_locator="https://github.com/code-yeongyu/oh-my-openagent/releases",
+                canonical_locator="https://github.com/code-yeongyu/oh-my-openagent/releases",
+                title="releases",
+                content_hash="doc-hash-releases",
+            ),
+            DiscoveredDocument(
+                requested_locator="https://github.com/code-yeongyu/oh-my-openagent/issues",
+                resolved_locator="https://github.com/code-yeongyu/oh-my-openagent/issues",
+                canonical_locator="https://github.com/code-yeongyu/oh-my-openagent/issues",
+                title="issues",
+                content_hash="doc-hash-issues",
+            ),
+            DiscoveredDocument(
+                requested_locator="https://github.com/code-yeongyu/oh-my-openagent/pulls",
+                resolved_locator="https://github.com/code-yeongyu/oh-my-openagent/pulls",
+                canonical_locator="https://github.com/code-yeongyu/oh-my-openagent/pulls",
+                title="pulls",
+                content_hash="doc-hash-pulls",
+            ),
+            DiscoveredDocument(
+                requested_locator="https://github.com/code-yeongyu/oh-my-openagent/compare/main...HEAD",
+                resolved_locator="https://github.com/code-yeongyu/oh-my-openagent/compare/main...HEAD",
+                canonical_locator="https://github.com/code-yeongyu/oh-my-openagent/compare/main...HEAD",
+                title="compare",
+                content_hash="doc-hash-compare",
+            ),
+        ]
+        stored_documents = self.store.replace_snapshot_documents(
+            snapshot.snapshot_id,
+            self.source.source_id,
+            discovered_documents,
+        )
+        chunk_texts = {
+            "https://github.com/code-yeongyu/oh-my-openagent/blob/main/README.md": "README install api configuration how to use",
+            "https://github.com/code-yeongyu/oh-my-openagent/tree/main/docs/guide.md": "Docs configuration install api",
+            "https://github.com/code-yeongyu/oh-my-openagent/blob/main/examples/install-api.md": "Examples install api walkthrough",
+            "https://github.com/code-yeongyu/oh-my-openagent/wiki": "Wiki how to use install api",
+            "https://github.com/code-yeongyu/oh-my-openagent/blob/main/AGENTS.md": "AGENTS agent command workflow prompt instructions how to work in this repo",
+            "https://github.com/code-yeongyu/oh-my-openagent/blob/main/CLAUDE.md": "CLAUDE workflow prompt instructions how to work in this repo",
+            "https://github.com/code-yeongyu/oh-my-openagent/blob/main/llms.txt": "llms prompt instructions how to work in this repo",
+            "https://github.com/code-yeongyu/oh-my-openagent/releases": "agent agent agent command command workflow prompt instructions how to work in this repo release notes open issues pull request compare versions",
+            "https://github.com/code-yeongyu/oh-my-openagent/issues": "Open issues release notes",
+            "https://github.com/code-yeongyu/oh-my-openagent/pulls": "Pull request release notes",
+            "https://github.com/code-yeongyu/oh-my-openagent/compare/main...HEAD": "Compare versions release notes",
+        }
+        for index, document in enumerate(stored_documents):
+            text = chunk_texts[document.canonical_locator]
+            chunk_id = f"{document.document_id}-chunk-{index}"
+            _ = self.connection.execute(
+                """
+                INSERT INTO chunks (
+                    chunk_id,
+                    source_id,
+                    snapshot_id,
+                    document_id,
+                    chunk_index,
+                    text,
+                    metadata_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    chunk_id,
+                    self.source.source_id,
+                    snapshot.snapshot_id,
+                    document.document_id,
+                    0,
+                    text,
+                    "{}",
+                ),
+            )
+            row = cast(
+                tuple[int] | None,
+                self.connection.execute(
+                    "SELECT rowid FROM chunks WHERE chunk_id = ?",
+                    (chunk_id,),
+                ).fetchone(),
+            )
+            if row is None:
+                self.fail("expected chunk rowid")
+            _ = self.connection.execute(
+                "INSERT INTO chunk_fts(rowid, chunk_id, text) VALUES (?, ?, ?)",
+                (row[0], chunk_id, text),
+            )
+        self.connection.commit()
+        self.store.activate_snapshot(self.source.source_id, snapshot.snapshot_id)
+
     def test_query_local_uses_stored_content_without_network_access(self) -> None:
         self._insert_snapshot_with_chunks(
             "snapshot-active",
@@ -308,6 +459,164 @@ class QueryAppContractTest(unittest.TestCase):
         self.assertEqual(result.limit, 5)
         self.assertIsNone(result.source_id)
         self.assertEqual(result.hit_count, 1)
+
+    def test_query_local_orders_github_repo_intents_exactly(self) -> None:
+        self._seed_github_repo_snapshot()
+
+        expectations = {
+            "install api": [
+                "https://github.com/code-yeongyu/oh-my-openagent/blob/main/README.md",
+                "https://github.com/code-yeongyu/oh-my-openagent/tree/main/docs/guide.md",
+                "https://github.com/code-yeongyu/oh-my-openagent/blob/main/examples/install-api.md",
+                "https://github.com/code-yeongyu/oh-my-openagent/wiki",
+            ],
+            "release notes": [
+                "https://github.com/code-yeongyu/oh-my-openagent/releases",
+                "https://github.com/code-yeongyu/oh-my-openagent/issues",
+                "https://github.com/code-yeongyu/oh-my-openagent/pulls",
+                "https://github.com/code-yeongyu/oh-my-openagent/compare/main...HEAD",
+            ],
+        }
+
+        for query_text, expected_locators in expectations.items():
+            with self.subTest(query_text=query_text):
+                result = self._query_local_json(query_text, limit=5)
+                self.assertEqual(
+                    [hit.document_locator for hit in result.hits], expected_locators
+                )
+
+    def test_query_local_boosts_guidance_before_releases_for_repo_operational_intent(
+        self,
+    ) -> None:
+        self._seed_github_repo_snapshot()
+
+        result = self._query_local_json("agent command", limit=5)
+
+        self.assertEqual(
+            [hit.document_locator for hit in result.hits],
+            [
+                "https://github.com/code-yeongyu/oh-my-openagent/blob/main/AGENTS.md",
+                "https://github.com/code-yeongyu/oh-my-openagent/releases",
+            ],
+        )
+
+    def test_query_local_treats_instructions_as_repo_operational_intent(self) -> None:
+        self._seed_github_repo_snapshot()
+
+        result = self._query_local_json("instructions", limit=5)
+
+        self.assertEqual(
+            [hit.document_locator for hit in result.hits],
+            [
+                "https://github.com/code-yeongyu/oh-my-openagent/blob/main/AGENTS.md",
+                "https://github.com/code-yeongyu/oh-my-openagent/blob/main/CLAUDE.md",
+                "https://github.com/code-yeongyu/oh-my-openagent/blob/main/llms.txt",
+                "https://github.com/code-yeongyu/oh-my-openagent/releases",
+            ],
+        )
+
+    def test_query_local_treats_how_to_work_phrase_as_repo_operational_intent(
+        self,
+    ) -> None:
+        self._seed_github_repo_snapshot()
+
+        result = self._query_local_json("how to work in this repo", limit=5)
+
+        self.assertEqual(
+            [hit.document_locator for hit in result.hits],
+            [
+                "https://github.com/code-yeongyu/oh-my-openagent/blob/main/AGENTS.md",
+                "https://github.com/code-yeongyu/oh-my-openagent/blob/main/CLAUDE.md",
+                "https://github.com/code-yeongyu/oh-my-openagent/blob/main/llms.txt",
+                "https://github.com/code-yeongyu/oh-my-openagent/releases",
+            ],
+        )
+
+    def test_query_local_does_not_treat_repo_file_named_issues_as_management(
+        self,
+    ) -> None:
+        snapshot = Snapshot(
+            snapshot_id="snapshot-github-issues-file",
+            source_id=self.source.source_id,
+            status=SnapshotStatus.INDEXED,
+            content_hash="hash-snapshot-github-issues-file",
+            is_active=True,
+        )
+        self.store.insert_snapshot(snapshot)
+        stored_documents = self.store.replace_snapshot_documents(
+            snapshot.snapshot_id,
+            self.source.source_id,
+            [
+                DiscoveredDocument(
+                    requested_locator="https://github.com/code-yeongyu/oh-my-openagent/releases",
+                    resolved_locator="https://github.com/code-yeongyu/oh-my-openagent/releases",
+                    canonical_locator="https://github.com/code-yeongyu/oh-my-openagent/releases",
+                    title="releases",
+                    content_hash="doc-hash-releases",
+                ),
+                DiscoveredDocument(
+                    requested_locator="https://github.com/code-yeongyu/oh-my-openagent/blob/main/issues.md",
+                    resolved_locator="https://github.com/code-yeongyu/oh-my-openagent/blob/main/issues.md",
+                    canonical_locator="https://github.com/code-yeongyu/oh-my-openagent/blob/main/issues.md",
+                    title="issues.md",
+                    content_hash="doc-hash-issues-md",
+                ),
+            ],
+        )
+        chunk_texts = {
+            "https://github.com/code-yeongyu/oh-my-openagent/releases": "release notes official project releases",
+            "https://github.com/code-yeongyu/oh-my-openagent/blob/main/issues.md": "release notes from an issues document inside the repo",
+        }
+        for index, document in enumerate(stored_documents):
+            text = chunk_texts[document.canonical_locator]
+            chunk_id = f"{document.document_id}-chunk-{index}"
+            _ = self.connection.execute(
+                """
+                INSERT INTO chunks (
+                    chunk_id,
+                    source_id,
+                    snapshot_id,
+                    document_id,
+                    chunk_index,
+                    text,
+                    metadata_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    chunk_id,
+                    self.source.source_id,
+                    snapshot.snapshot_id,
+                    document.document_id,
+                    0,
+                    text,
+                    "{}",
+                ),
+            )
+            row = cast(
+                tuple[int] | None,
+                self.connection.execute(
+                    "SELECT rowid FROM chunks WHERE chunk_id = ?",
+                    (chunk_id,),
+                ).fetchone(),
+            )
+            if row is None:
+                self.fail("expected chunk rowid")
+            _ = self.connection.execute(
+                "INSERT INTO chunk_fts(rowid, chunk_id, text) VALUES (?, ?, ?)",
+                (row[0], chunk_id, text),
+            )
+        self.connection.commit()
+        self.store.activate_snapshot(self.source.source_id, snapshot.snapshot_id)
+
+        result = self._query_local_json("release notes", limit=5)
+
+        self.assertEqual(
+            [hit.document_locator for hit in result.hits],
+            [
+                "https://github.com/code-yeongyu/oh-my-openagent/releases",
+                "https://github.com/code-yeongyu/oh-my-openagent/blob/main/issues.md",
+            ],
+        )
 
 
 if __name__ == "__main__":

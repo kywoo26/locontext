@@ -3,15 +3,18 @@ from __future__ import annotations
 import sqlite3
 import unittest
 from collections.abc import Sequence
+from hashlib import sha256
 from importlib import import_module
 
 import httpx
 
 from locontext.app.refresh import RefreshOrchestrator
 from locontext.domain.models import (
+    DiscoveredDocument,
     DiscoveryOutcome,
     Document,
     Snapshot,
+    SnapshotStatus,
     Source,
     SourceKind,
 )
@@ -45,6 +48,22 @@ class _StaticOutcomeDiscoveryProvider:
     def discover(self, source: Source) -> DiscoveryOutcome:
         _ = source
         return self.outcome
+
+
+def _legacy_manifest_hash(documents: Sequence[DiscoveredDocument]) -> str:
+    payload = "\n".join(
+        "|".join(
+            [
+                document.requested_locator,
+                document.resolved_locator,
+                document.canonical_locator,
+                document.title or "",
+                document.content_hash or "",
+            ]
+        )
+        for document in documents
+    )
+    return sha256(payload.encode("utf-8")).hexdigest()
 
 
 class RefreshOrchestratorTest(unittest.TestCase):
@@ -146,6 +165,69 @@ class RefreshOrchestratorTest(unittest.TestCase):
             self.fail("expected an active snapshot")
         self.assertEqual(active.snapshot_id, second.snapshot_id)
         self.assertEqual(len(engine.reindex_calls), 2)
+
+    def test_github_refresh_reprocesses_legacy_snapshot_under_new_rules(self) -> None:
+        github_source = Source(
+            source_id="source-github",
+            source_kind=SourceKind.WEB,
+            requested_locator="https://github.com/example/project",
+            resolved_locator="https://github.com/example/project",
+            canonical_locator="https://github.com/example/project",
+            docset_root="https://github.com/example/project",
+        )
+        self.store.upsert_source(github_source)
+        readme = DiscoveredDocument(
+            requested_locator="https://github.com/example/project",
+            resolved_locator="https://github.com/example/project",
+            canonical_locator="https://github.com/example/project",
+            title="README",
+            content_hash="hash-readme",
+        )
+        management = DiscoveredDocument(
+            requested_locator="https://github.com/example/project/issues",
+            resolved_locator="https://github.com/example/project/issues",
+            canonical_locator="https://github.com/example/project/issues",
+            title="Issues",
+            content_hash="hash-issues",
+        )
+        legacy_snapshot = Snapshot(
+            snapshot_id="legacy-github-snapshot",
+            source_id=github_source.source_id,
+            status=SnapshotStatus.INDEXED,
+            fetched_at="2025-01-01T00:00:00+00:00",
+            content_hash=_legacy_manifest_hash([readme]),
+            is_active=True,
+        )
+        self.store.insert_snapshot(legacy_snapshot)
+        _ = self.store.replace_snapshot_documents(
+            legacy_snapshot.snapshot_id, github_source.source_id, [readme, management]
+        )
+        self.store.activate_snapshot(
+            github_source.source_id, legacy_snapshot.snapshot_id
+        )
+        provider = _StaticOutcomeDiscoveryProvider(
+            DiscoveryOutcome(documents=[readme, management])
+        )
+        engine = _RecordingIndexingEngine()
+        orchestrator = RefreshOrchestrator(self.store, provider, engine)
+
+        result = orchestrator.refresh_source(github_source.source_id)
+
+        self.assertTrue(result.changed)
+        self.assertEqual(result.document_count, 2)
+        self.assertEqual(len(engine.reindex_calls), 1)
+        active = self.store.get_active_snapshot(github_source.source_id)
+        if active is None:
+            self.fail("expected an active snapshot")
+        self.assertNotEqual(active.snapshot_id, legacy_snapshot.snapshot_id)
+        stored_documents = self.store.list_documents(active.snapshot_id)
+        self.assertEqual(
+            [document.canonical_locator for document in stored_documents],
+            [
+                readme.canonical_locator,
+                management.canonical_locator,
+            ],
+        )
 
     def test_reindex_source_uses_active_snapshot_without_discovery(self) -> None:
         orchestrator, engine = self._make_orchestrator(
