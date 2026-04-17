@@ -6,6 +6,10 @@ on:
     branches:
       - main
 
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -74,9 +78,6 @@ jobs:
 
       - name: Install dependencies
         run: uv sync --group dev --locked
-
-      - name: Compile source tree
-        run: uv run python -m compileall src tests
 
       - name: Check CLI help
         run: uv run locontext --help
