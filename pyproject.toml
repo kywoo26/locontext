@@ -33,6 +33,7 @@ locontext = "locontext.cli.main:main"
 dev = [
   "pre-commit>=4.3.0",
   "pytest>=8.4.2",
+  "pytest-mock>=3.14.0",
   "ruff>=0.14.0",
   "ty>=0.0.29",
 ]
@@ -79,7 +80,7 @@ include = ["src", "tests"]
 [tool.pytest.ini_options]
 minversion = "8.0"
 addopts = "-ra --import-mode=importlib -m 'not integration'"
-testpaths = ["tests"]
+testpaths = ["tests/unit", "tests/integration"]
 markers = [
   "integration: tests that exercise real heavy integrations and are excluded from the default fast unit loop",
 ]
