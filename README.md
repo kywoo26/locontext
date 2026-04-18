@@ -46,6 +46,16 @@ uv run locontext status
 uv run locontext doctor
 ```
 
+## Testing
+
+```bash
+# Run unit tests (fast loop)
+uv run pytest
+
+# Run integration tests (explicitly)
+uv run pytest --override-ini addopts="-ra --import-mode=importlib" -m integration
+```
+
 ## Out of scope for v1
 
 - Obsidian integration

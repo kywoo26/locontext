@@ -18,7 +18,7 @@ This is the root AGENTS file for locontext. It defines repo-wide rules. Add chil
 - Keep business logic out of the CLI layer.
 - Prefer stdlib/dataclasses/protocols in core layers unless a library clearly reduces real complexity.
 - Keep tests local and deterministic by default.
-- Treat `uv run pytest` as the fast unit-test loop; run integration tests explicitly with `uv run pytest --override-ini addopts="-ra --import-mode=importlib" -m integration` before opening a PR.
+- Treat `uv run pytest` as the fast unit-test loop (covering `tests/unit/`); run integration tests explicitly with `uv run pytest --override-ini addopts="-ra --import-mode=importlib" -m integration` (covering `tests/integration/`) before opening a PR.
 - Use integration tests for real heavy engines, subprocess/thread/server lifecycle, real network or DB services, benchmark-sized fixtures, or timing-sensitive behavior.
 
 ## Ask First
@@ -52,7 +52,8 @@ This is the root AGENTS file for locontext. It defines repo-wide rules. Add chil
 | Path | Role | Governance Owner |
 | :--- | :--- | :--- |
 | `src/locontext/` | Runtime code | Root `AGENTS.md` |
-| `tests/` | Verification | Root `AGENTS.md` |
+| `tests/unit/` | Unit tests | Root `AGENTS.md` |
+| `tests/integration/` | Integration tests | Root `AGENTS.md` |
 | `.github/` | CI / repo workflow surface | Root `AGENTS.md` |
 | `docs/adr/` | Architecture contracts | Root `AGENTS.md` |
 
