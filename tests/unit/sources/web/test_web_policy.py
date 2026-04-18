@@ -1,11 +1,7 @@
-from __future__ import annotations
-
-import unittest
-
 from locontext.sources.web.policy import WebPageSignals, decide_page_admission
 
 
-class WebPolicyTest(unittest.TestCase):
+class TestWebPolicy:
     def test_accepts_github_repo_docs_surfaces_including_wiki(self) -> None:
         for canonical_locator in [
             "https://github.com/code-yeongyu/oh-my-openagent/blob/main/README.md",
@@ -17,20 +13,18 @@ class WebPolicyTest(unittest.TestCase):
             "https://github.com/code-yeongyu/oh-my-openagent/pulls",
             "https://github.com/code-yeongyu/oh-my-openagent/compare/main...HEAD",
         ]:
-            with self.subTest(canonical_locator=canonical_locator):
-                decision = decide_page_admission(
-                    canonical_locator=canonical_locator,
-                    seed_locator="https://github.com/code-yeongyu/oh-my-openagent",
-                    signals=WebPageSignals(
-                        visible_text_chars=900,
-                        link_text_chars=120,
-                        paragraph_count=5,
-                        heading_count=3,
-                        path_depth=2,
-                    ),
-                )
-
-                self.assertTrue(decision.accepted)
+            decision = decide_page_admission(
+                canonical_locator=canonical_locator,
+                seed_locator="https://github.com/code-yeongyu/oh-my-openagent",
+                signals=WebPageSignals(
+                    visible_text_chars=900,
+                    link_text_chars=120,
+                    paragraph_count=5,
+                    heading_count=3,
+                    path_depth=2,
+                ),
+            )
+            assert decision.accepted
 
     def test_rejects_github_repo_chrome_surfaces_even_with_rich_signals(self) -> None:
         for canonical_locator in [
@@ -42,20 +36,18 @@ class WebPolicyTest(unittest.TestCase):
             "https://github.com/code-yeongyu/oh-my-openagent/commits/main",
             "https://github.com/code-yeongyu/oh-my-openagent/tags",
         ]:
-            with self.subTest(canonical_locator=canonical_locator):
-                decision = decide_page_admission(
-                    canonical_locator=canonical_locator,
-                    seed_locator="https://github.com/code-yeongyu/oh-my-openagent",
-                    signals=WebPageSignals(
-                        visible_text_chars=900,
-                        link_text_chars=120,
-                        paragraph_count=5,
-                        heading_count=3,
-                        path_depth=2,
-                    ),
-                )
-
-                self.assertFalse(decision.accepted)
+            decision = decide_page_admission(
+                canonical_locator=canonical_locator,
+                seed_locator="https://github.com/code-yeongyu/oh-my-openagent",
+                signals=WebPageSignals(
+                    visible_text_chars=900,
+                    link_text_chars=120,
+                    paragraph_count=5,
+                    heading_count=3,
+                    path_depth=2,
+                ),
+            )
+            assert not decision.accepted
 
     def test_rejects_navigation_chrome_like_page(self) -> None:
         decision = decide_page_admission(
@@ -69,10 +61,9 @@ class WebPolicyTest(unittest.TestCase):
                 path_depth=1,
             ),
         )
-
-        self.assertFalse(decision.accepted)
-        self.assertIn("link_density", decision.reasons)
-        self.assertIn("seed_path_escape", decision.reasons)
+        assert not decision.accepted
+        assert "link_density" in decision.reasons
+        assert "seed_path_escape" in decision.reasons
 
     def test_accepts_content_rich_repo_like_page(self) -> None:
         decision = decide_page_admission(
@@ -86,9 +77,8 @@ class WebPolicyTest(unittest.TestCase):
                 path_depth=2,
             ),
         )
-
-        self.assertTrue(decision.accepted)
-        self.assertIn("content_rich", decision.reasons)
+        assert decision.accepted
+        assert "content_rich" in decision.reasons
 
     def test_accepts_normal_docs_page(self) -> None:
         decision = decide_page_admission(
@@ -102,9 +92,4 @@ class WebPolicyTest(unittest.TestCase):
                 path_depth=2,
             ),
         )
-
-        self.assertTrue(decision.accepted)
-
-
-if __name__ == "__main__":
-    _ = unittest.main()
+        assert decision.accepted

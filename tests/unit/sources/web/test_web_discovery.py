@@ -1,12 +1,8 @@
-from __future__ import annotations
-
-import unittest
-
 from locontext.domain.models import DiscoveredDocument, Source, SourceKind
 from locontext.sources.web.discovery import filter_and_order_discovered_documents
 
 
-class WebDiscoveryPolicyTest(unittest.TestCase):
+class TestWebDiscoveryPolicy:
     def _source(self, docset_root: str = "https://docs.example.com/docs") -> Source:
         return Source(
             source_id="source-1",
@@ -38,11 +34,9 @@ class WebDiscoveryPolicyTest(unittest.TestCase):
                 ),
             ],
         )
-
-        self.assertEqual(
-            [item.canonical_locator for item in ordered],
-            ["https://docs.example.com/docs/intro"],
-        )
+        assert [item.canonical_locator for item in ordered] == [
+            "https://docs.example.com/docs/intro"
+        ]
 
     def test_filters_docset_root_only(self) -> None:
         ordered = filter_and_order_discovered_documents(
@@ -60,11 +54,9 @@ class WebDiscoveryPolicyTest(unittest.TestCase):
                 ),
             ],
         )
-
-        self.assertEqual(
-            [item.canonical_locator for item in ordered],
-            ["https://docs.example.com/docs/guide"],
-        )
+        assert [item.canonical_locator for item in ordered] == [
+            "https://docs.example.com/docs/guide"
+        ]
 
     def test_filters_repo_root_scope_before_off_scope_chrome_pages(self) -> None:
         ordered = filter_and_order_discovered_documents(
@@ -87,11 +79,9 @@ class WebDiscoveryPolicyTest(unittest.TestCase):
                 ),
             ],
         )
-
-        self.assertEqual(
-            [item.canonical_locator for item in ordered],
-            ["https://github.com/code-yeongyu/oh-my-openagent"],
-        )
+        assert [item.canonical_locator for item in ordered] == [
+            "https://github.com/code-yeongyu/oh-my-openagent"
+        ]
 
     def test_rejects_github_repo_boundary_sibling_paths(self) -> None:
         ordered = filter_and_order_discovered_documents(
@@ -109,11 +99,9 @@ class WebDiscoveryPolicyTest(unittest.TestCase):
                 ),
             ],
         )
-
-        self.assertEqual(
-            [item.canonical_locator for item in ordered],
-            ["https://github.com/code-yeongyu/oh-my-openagent"],
-        )
+        assert [item.canonical_locator for item in ordered] == [
+            "https://github.com/code-yeongyu/oh-my-openagent"
+        ]
 
     def test_prefers_github_docs_surfaces_over_management_and_chrome_pages(
         self,
@@ -163,19 +151,15 @@ class WebDiscoveryPolicyTest(unittest.TestCase):
                 ),
             ],
         )
-
-        self.assertEqual(
-            [item.canonical_locator for item in ordered],
-            [
-                "https://github.com/code-yeongyu/oh-my-openagent/blob/main/README.md",
-                "https://github.com/code-yeongyu/oh-my-openagent/tree/main/docs/guide.md",
-                "https://github.com/code-yeongyu/oh-my-openagent/wiki",
-                "https://github.com/code-yeongyu/oh-my-openagent/compare/main...HEAD",
-                "https://github.com/code-yeongyu/oh-my-openagent/issues",
-                "https://github.com/code-yeongyu/oh-my-openagent/pulls",
-                "https://github.com/code-yeongyu/oh-my-openagent/releases",
-            ],
-        )
+        assert [item.canonical_locator for item in ordered] == [
+            "https://github.com/code-yeongyu/oh-my-openagent/blob/main/README.md",
+            "https://github.com/code-yeongyu/oh-my-openagent/tree/main/docs/guide.md",
+            "https://github.com/code-yeongyu/oh-my-openagent/wiki",
+            "https://github.com/code-yeongyu/oh-my-openagent/compare/main...HEAD",
+            "https://github.com/code-yeongyu/oh-my-openagent/issues",
+            "https://github.com/code-yeongyu/oh-my-openagent/pulls",
+            "https://github.com/code-yeongyu/oh-my-openagent/releases",
+        ]
 
     def test_filters_article_leaf_scope_before_unrelated_host_pages(self) -> None:
         ordered = filter_and_order_discovered_documents(
@@ -203,14 +187,10 @@ class WebDiscoveryPolicyTest(unittest.TestCase):
                 ),
             ],
         )
-
-        self.assertEqual(
-            [item.canonical_locator for item in ordered],
-            [
-                "https://news.example.com/blog/post",
-                "https://news.example.com/blog/post/comments",
-            ],
-        )
+        assert [item.canonical_locator for item in ordered] == [
+            "https://news.example.com/blog/post",
+            "https://news.example.com/blog/post/comments",
+        ]
 
     def test_dedupes_canonical_locators(self) -> None:
         ordered = filter_and_order_discovered_documents(
@@ -228,11 +208,9 @@ class WebDiscoveryPolicyTest(unittest.TestCase):
                 ),
             ],
         )
-
-        self.assertEqual(
-            [item.canonical_locator for item in ordered],
-            ["https://docs.example.com/docs/intro"],
-        )
+        assert [item.canonical_locator for item in ordered] == [
+            "https://docs.example.com/docs/intro"
+        ]
 
     def test_orders_shallower_paths_first_then_lexically(self) -> None:
         ordered = filter_and_order_discovered_documents(
@@ -260,16 +238,12 @@ class WebDiscoveryPolicyTest(unittest.TestCase):
                 ),
             ],
         )
-
-        self.assertEqual(
-            [item.canonical_locator for item in ordered],
-            [
-                "https://docs.example.com/docs",
-                "https://docs.example.com/docs/alpha",
-                "https://docs.example.com/docs/beta",
-                "https://docs.example.com/docs/beta/deep",
-            ],
-        )
+        assert [item.canonical_locator for item in ordered] == [
+            "https://docs.example.com/docs",
+            "https://docs.example.com/docs/alpha",
+            "https://docs.example.com/docs/beta",
+            "https://docs.example.com/docs/beta/deep",
+        ]
 
     def test_keeps_metadata_for_second_stage_boundary_policy(self) -> None:
         ordered = filter_and_order_discovered_documents(
@@ -283,11 +257,4 @@ class WebDiscoveryPolicyTest(unittest.TestCase):
                 )
             ],
         )
-
-        self.assertEqual(
-            ordered[0].metadata["page_signals"], {"visible_text_chars": 100}
-        )
-
-
-if __name__ == "__main__":
-    _ = unittest.main()
+        assert ordered[0].metadata["page_signals"] == {"visible_text_chars": 100}

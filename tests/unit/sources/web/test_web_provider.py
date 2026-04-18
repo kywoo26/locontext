@@ -1,15 +1,12 @@
-from __future__ import annotations
-
-import unittest
-
 import httpx
+import pytest
 
 from locontext.domain.models import Source, SourceKind
 from locontext.sources.web.fetch import WebHTTPStatusError
 from locontext.sources.web.provider import WebDiscoveryProvider
 
 
-class WebProviderWarningContractTest(unittest.TestCase):
+class TestWebProviderWarningContract:
     def _source(self) -> Source:
         return Source(
             source_id="source-1",
@@ -25,10 +22,8 @@ class WebProviderWarningContractTest(unittest.TestCase):
             return httpx.Response(404, request=request)
 
         client = httpx.Client(transport=httpx.MockTransport(handler))
-        self.addCleanup(client.close)
         provider = WebDiscoveryProvider(client=client)
-
-        with self.assertRaises(WebHTTPStatusError):
+        with pytest.raises(WebHTTPStatusError):
             _ = provider.discover(self._source())
 
     def test_child_fetch_failure_becomes_warning_not_total_failure(self) -> None:
@@ -50,16 +45,9 @@ class WebProviderWarningContractTest(unittest.TestCase):
             return httpx.Response(404, request=request)
 
         client = httpx.Client(transport=httpx.MockTransport(handler))
-        self.addCleanup(client.close)
         provider = WebDiscoveryProvider(client=client)
-
         outcome = provider.discover(self._source())
-
-        self.assertEqual(len(outcome.documents), 2)
-        self.assertEqual(outcome.warning_count, 1)
-        self.assertEqual(len(outcome.warning_samples), 1)
-        self.assertIn("/docs/bad", outcome.warning_samples[0].locator)
-
-
-if __name__ == "__main__":
-    _ = unittest.main()
+        assert len(outcome.documents) == 2
+        assert outcome.warning_count == 1
+        assert len(outcome.warning_samples) == 1
+        assert "/docs/bad" in outcome.warning_samples[0].locator
