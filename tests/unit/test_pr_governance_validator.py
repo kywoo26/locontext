@@ -138,3 +138,11 @@ Skipped for trivial changes.
         "PR body section `## Contract Sync` is blank or placeholder-only",
         "PR body section `## Risks / Rollback` is blank or placeholder-only",
     ]
+
+
+def test_validate_pr_title_accepts_governance_scope() -> None:
+    errors = MODULE.validate_pr_title(
+        "ci(governance): add local commit hook enforcement"
+    )
+
+    assert errors == []

@@ -60,6 +60,8 @@ This is the root AGENTS file for locontext. It defines repo-wide rules. Add chil
 ## PR Discipline
 
 - Maintain atomic commits by concern.
+- Use `type(scope): short imperative subject` for commit titles.
+- Keep commit bodies focused on why/behavior/refs when the change is non-trivial.
 - Run the `PR preflight` verification matrix command before opening.
 - Reference issues in the footer if applicable: `Refs: #N` or `Fixes: #N`.
 

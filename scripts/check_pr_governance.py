@@ -26,6 +26,7 @@ ALLOWED_TITLE_SCOPES = {
     "test",
     "ci",
     "deps",
+    "governance",
 }
 
 REQUIRED_SECTION_HEADINGS = (
