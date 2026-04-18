@@ -14,7 +14,7 @@ BREAKING CHANGE: migration steps here (if any)
 ```
 
 Types: feat, fix, refactor, docs, test, ci, deps
-Scopes: cli, sources, store, query, domain, app, docs, test, ci, deps
+Scopes: cli, sources, store, query, domain, app, docs, test, ci, deps, governance
 
 - `feat` and `fix` require a scope.
 - `docs`, `test`, `ci`, `deps`, `refactor` may omit scope.
