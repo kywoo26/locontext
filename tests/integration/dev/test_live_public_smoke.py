@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from collections.abc import Callable
 from importlib import import_module
 from inspect import Parameter, signature

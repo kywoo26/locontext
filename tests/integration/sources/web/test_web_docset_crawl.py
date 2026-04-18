@@ -1,11 +1,8 @@
-from __future__ import annotations
-
 import sqlite3
 import tempfile
 import threading
-import unittest
 from collections.abc import Sequence
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import override
@@ -80,17 +77,18 @@ def _serve_fixture(routes: dict[str, bytes]):
         server.server_close()
 
 
-class WebDocsetCrawlPolicyTest(unittest.TestCase):
-    def _source(self) -> Source:
-        return Source(
-            source_id="source-1",
-            source_kind=SourceKind.WEB,
-            requested_locator="https://docs.example.com/docs",
-            resolved_locator="https://docs.example.com/docs",
-            canonical_locator="https://docs.example.com/docs",
-            docset_root="https://docs.example.com/docs",
-        )
+def _source() -> Source:
+    return Source(
+        source_id="source-1",
+        source_kind=SourceKind.WEB,
+        requested_locator="https://docs.example.com/docs",
+        resolved_locator="https://docs.example.com/docs",
+        canonical_locator="https://docs.example.com/docs",
+        docset_root="https://docs.example.com/docs",
+    )
 
+
+class TestWebDocsetCrawlPolicy:
     def test_refresh_ingests_only_in_scope_local_pages(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -137,9 +135,9 @@ class WebDocsetCrawlPolicyTest(unittest.TestCase):
                 "/blog/post": (root / "blog" / "post.html").read_bytes(),
             }
 
-            with _serve_fixture(routes) as (base_url, requests):
+            with _serve_fixture(routes) as (base_url, requests), ExitStack() as stack:
                 connection = sqlite3.connect(":memory:")
-                self.addCleanup(connection.close)
+                _ = stack.callback(connection.close)
                 store = SQLiteStore(connection)
                 store.ensure_schema()
                 source = Source(
@@ -153,7 +151,7 @@ class WebDocsetCrawlPolicyTest(unittest.TestCase):
                 store.upsert_source(source)
 
                 client = httpx.Client(follow_redirects=True, timeout=5.0)
-                self.addCleanup(client.close)
+                _ = stack.callback(client.close)
                 provider = WebDiscoveryProvider(client=client)
                 engine = _RecordingIndexingEngine()
                 orchestrator = RefreshOrchestrator(store, provider, engine)
@@ -161,33 +159,27 @@ class WebDocsetCrawlPolicyTest(unittest.TestCase):
                 result = orchestrator.refresh_source("source-1")
                 active_snapshot = store.get_active_snapshot("source-1")
 
-                self.assertTrue(result.changed)
-                self.assertEqual(result.document_count, 3)
+                assert result.changed
+                assert result.document_count == 3
                 snapshot_id = result.snapshot_id
-                if snapshot_id is None:
-                    self.fail("expected a snapshot id")
-                if active_snapshot is None:
-                    self.fail("expected an active snapshot")
-                self.assertEqual(active_snapshot.snapshot_id, snapshot_id)
-                self.assertEqual(
-                    requests,
-                    ["/docs", "/docs/guide", "/docs/guide/install"],
-                )
-                self.assertEqual(
-                    engine.reindex_calls,
-                    [("source-1", snapshot_id, 3)],
-                )
+                assert snapshot_id is not None
+                assert active_snapshot is not None
+                assert active_snapshot.snapshot_id == snapshot_id
+                assert set(requests) == {
+                    "/docs",
+                    "/docs/guide",
+                    "/docs/guide/install",
+                }
+                assert len(requests) == 3
+                assert engine.reindex_calls == [("source-1", snapshot_id, 3)]
 
                 stored_documents = store.list_documents(snapshot_id)
-                self.assertEqual(len(stored_documents), 3)
-                self.assertEqual(
-                    [item.canonical_locator for item in stored_documents],
-                    [
-                        f"{base_url}/docs",
-                        f"{base_url}/docs/guide",
-                        f"{base_url}/docs/guide/install",
-                    ],
-                )
+                assert len(stored_documents) == 3
+                assert {item.canonical_locator for item in stored_documents} == {
+                    f"{base_url}/docs",
+                    f"{base_url}/docs/guide",
+                    f"{base_url}/docs/guide/install",
+                }
 
     def test_refresh_keeps_github_management_pages_but_skips_chrome_and_repo_sibling_pages(
         self,
@@ -278,9 +270,9 @@ class WebDocsetCrawlPolicyTest(unittest.TestCase):
                 ).read_bytes(),
             }
 
-            with _serve_fixture(routes) as (base_url, requests):
+            with _serve_fixture(routes) as (base_url, requests), ExitStack() as stack:
                 connection = sqlite3.connect(":memory:")
-                self.addCleanup(connection.close)
+                _ = stack.callback(connection.close)
                 store = SQLiteStore(connection)
                 store.ensure_schema()
                 source = Source(
@@ -294,7 +286,7 @@ class WebDocsetCrawlPolicyTest(unittest.TestCase):
                 store.upsert_source(source)
 
                 client = httpx.Client(follow_redirects=True, timeout=5.0)
-                self.addCleanup(client.close)
+                _ = stack.callback(client.close)
                 provider = WebDiscoveryProvider(client=client)
                 engine = _RecordingIndexingEngine()
                 orchestrator = RefreshOrchestrator(store, provider, engine)
@@ -302,48 +294,41 @@ class WebDocsetCrawlPolicyTest(unittest.TestCase):
                 result = orchestrator.refresh_source("source-1")
                 active_snapshot = store.get_active_snapshot("source-1")
 
-                self.assertTrue(result.changed)
-                self.assertEqual(result.document_count, 8)
+                assert result.changed
+                assert result.document_count == 8
                 snapshot_id = result.snapshot_id
-                if snapshot_id is None:
-                    self.fail("expected a snapshot id")
-                if active_snapshot is None:
-                    self.fail("expected an active snapshot")
-                self.assertEqual(active_snapshot.snapshot_id, snapshot_id)
-                self.assertEqual(
-                    requests,
-                    [
-                        "/repo",
-                        "/repo/blob/main/README.md",
-                        "/repo/wiki",
-                        "/repo/tree/main/docs/guide.md",
-                        "/repo/compare/main...HEAD",
-                        "/repo/issues",
-                        "/repo/pulls",
-                        "/repo/releases",
-                    ],
-                )
-                self.assertEqual(engine.reindex_calls, [("source-1", snapshot_id, 8)])
+                assert snapshot_id is not None
+                assert active_snapshot is not None
+                assert active_snapshot.snapshot_id == snapshot_id
+                assert set(requests) == {
+                    "/repo",
+                    "/repo/blob/main/README.md",
+                    "/repo/wiki",
+                    "/repo/tree/main/docs/guide.md",
+                    "/repo/compare/main...HEAD",
+                    "/repo/issues",
+                    "/repo/pulls",
+                    "/repo/releases",
+                }
+                assert len(requests) == 8
+                assert engine.reindex_calls == [("source-1", snapshot_id, 8)]
 
                 stored_documents = store.list_documents(snapshot_id)
-                self.assertEqual(len(stored_documents), 8)
-                self.assertEqual(
-                    [item.canonical_locator for item in stored_documents],
-                    [
-                        f"{base_url}/repo",
-                        f"{base_url}/repo/blob/main/README.md",
-                        f"{base_url}/repo/wiki",
-                        f"{base_url}/repo/tree/main/docs/guide.md",
-                        f"{base_url}/repo/compare/main...HEAD",
-                        f"{base_url}/repo/issues",
-                        f"{base_url}/repo/pulls",
-                        f"{base_url}/repo/releases",
-                    ],
-                )
+                assert len(stored_documents) == 8
+                assert {item.canonical_locator for item in stored_documents} == {
+                    f"{base_url}/repo",
+                    f"{base_url}/repo/blob/main/README.md",
+                    f"{base_url}/repo/wiki",
+                    f"{base_url}/repo/tree/main/docs/guide.md",
+                    f"{base_url}/repo/compare/main...HEAD",
+                    f"{base_url}/repo/issues",
+                    f"{base_url}/repo/pulls",
+                    f"{base_url}/repo/releases",
+                }
 
     def test_seed_counts_toward_max_pages(self) -> None:
         ordered = filter_and_order_discovered_documents(
-            self._source(),
+            _source(),
             [
                 DiscoveredDocument(
                     requested_locator="https://docs.example.com/docs",
@@ -368,21 +353,15 @@ class WebDocsetCrawlPolicyTest(unittest.TestCase):
             ],
         )
 
-        self.assertEqual(
-            [item.canonical_locator for item in ordered],
-            [
-                "https://docs.example.com/docs",
-                "https://docs.example.com/docs/guide",
-                "https://docs.example.com/docs/guide/install",
-            ],
-        )
-        self.assertEqual(
-            [item.canonical_locator for item in ordered[:2]],
-            [
-                "https://docs.example.com/docs",
-                "https://docs.example.com/docs/guide",
-            ],
-        )
+        assert [item.canonical_locator for item in ordered] == [
+            "https://docs.example.com/docs",
+            "https://docs.example.com/docs/guide",
+            "https://docs.example.com/docs/guide/install",
+        ]
+        assert [item.canonical_locator for item in ordered[:2]] == [
+            "https://docs.example.com/docs",
+            "https://docs.example.com/docs/guide",
+        ]
 
     def test_repeat_runs_keep_the_same_order(self) -> None:
         candidates = [
@@ -403,13 +382,12 @@ class WebDocsetCrawlPolicyTest(unittest.TestCase):
             ),
         ]
 
-        first = filter_and_order_discovered_documents(self._source(), candidates)
-        second = filter_and_order_discovered_documents(self._source(), candidates)
+        first = filter_and_order_discovered_documents(_source(), candidates)
+        second = filter_and_order_discovered_documents(_source(), candidates)
 
-        self.assertEqual(
-            [item.canonical_locator for item in first],
-            [item.canonical_locator for item in second],
-        )
+        assert [item.canonical_locator for item in first] == [
+            item.canonical_locator for item in second
+        ]
 
     def test_refresh_rejects_host_level_github_chrome_pages(self) -> None:
         with tempfile.TemporaryDirectory():
@@ -420,9 +398,9 @@ class WebDocsetCrawlPolicyTest(unittest.TestCase):
                 "/mcp": b'<html><head><title>MCP</title></head><body><a href="/marketplace">Marketplace</a><a href="/pricing">Pricing</a><a href="/login">Login</a></body></html>',
             }
 
-            with _serve_fixture(routes) as (base_url, _requests):
+            with _serve_fixture(routes) as (base_url, _requests), ExitStack() as stack:
                 connection = sqlite3.connect(":memory:")
-                self.addCleanup(connection.close)
+                _ = stack.callback(connection.close)
                 store = SQLiteStore(connection)
                 store.ensure_schema()
                 source = Source(
@@ -436,24 +414,20 @@ class WebDocsetCrawlPolicyTest(unittest.TestCase):
                 store.upsert_source(source)
 
                 client = httpx.Client(follow_redirects=True, timeout=5.0)
-                self.addCleanup(client.close)
+                _ = stack.callback(client.close)
                 provider = WebDiscoveryProvider(client=client)
                 engine = _RecordingIndexingEngine()
                 orchestrator = RefreshOrchestrator(store, provider, engine)
 
                 result = orchestrator.refresh_source("source-1")
                 snapshot_id = result.snapshot_id
-                if snapshot_id is None:
-                    self.fail("expected snapshot id")
+                assert snapshot_id is not None
                 stored_documents = store.list_documents(snapshot_id)
 
-                self.assertEqual(
-                    [item.canonical_locator for item in stored_documents],
-                    [
-                        f"{base_url}/code-yeongyu/oh-my-openagent",
-                        f"{base_url}/code-yeongyu/oh-my-openagent/blob/main/README.md",
-                    ],
-                )
+                assert [item.canonical_locator for item in stored_documents] == [
+                    f"{base_url}/code-yeongyu/oh-my-openagent",
+                    f"{base_url}/code-yeongyu/oh-my-openagent/blob/main/README.md",
+                ]
 
     def test_refresh_rejects_unrelated_pages_for_article_leaf_roots(self) -> None:
         with tempfile.TemporaryDirectory():
@@ -464,9 +438,9 @@ class WebDocsetCrawlPolicyTest(unittest.TestCase):
                 "/docs/guide": b"<html><head><title>Guide</title></head><body><h1>Guide</h1></body></html>",
             }
 
-            with _serve_fixture(routes) as (base_url, requests):
+            with _serve_fixture(routes) as (base_url, requests), ExitStack() as stack:
                 connection = sqlite3.connect(":memory:")
-                self.addCleanup(connection.close)
+                _ = stack.callback(connection.close)
                 store = SQLiteStore(connection)
                 store.ensure_schema()
                 source = Source(
@@ -480,31 +454,20 @@ class WebDocsetCrawlPolicyTest(unittest.TestCase):
                 store.upsert_source(source)
 
                 client = httpx.Client(follow_redirects=True, timeout=5.0)
-                self.addCleanup(client.close)
+                _ = stack.callback(client.close)
                 provider = WebDiscoveryProvider(client=client)
                 engine = _RecordingIndexingEngine()
                 orchestrator = RefreshOrchestrator(store, provider, engine)
 
                 result = orchestrator.refresh_source("source-1")
                 snapshot_id = result.snapshot_id
-                if snapshot_id is None:
-                    self.fail("expected snapshot id")
+                assert snapshot_id is not None
 
                 stored_documents = store.list_documents(snapshot_id)
 
-                self.assertEqual(
-                    requests,
-                    ["/blog/post", "/blog/post/comments"],
-                )
-                self.assertEqual(result.document_count, 2)
-                self.assertEqual(
-                    [item.canonical_locator for item in stored_documents],
-                    [
-                        f"{base_url}/blog/post",
-                        f"{base_url}/blog/post/comments",
-                    ],
-                )
-
-
-if __name__ == "__main__":
-    _ = unittest.main()
+                assert requests == ["/blog/post", "/blog/post/comments"]
+                assert result.document_count == 2
+                assert [item.canonical_locator for item in stored_documents] == [
+                    f"{base_url}/blog/post",
+                    f"{base_url}/blog/post/comments",
+                ]
