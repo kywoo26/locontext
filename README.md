@@ -63,3 +63,5 @@ uv run pytest --override-ini addopts="-ra --import-mode=importlib" -m integratio
 - Eval / telemetry
 - Publishing / install marketplace flows
 - Multi-agent target sprawl
+
+<!-- Temporary validation PR artifact for PR governance checks. -->
