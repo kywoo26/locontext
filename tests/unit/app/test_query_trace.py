@@ -1,7 +1,4 @@
-from __future__ import annotations
-
 import sqlite3
-import unittest
 from importlib import import_module
 from typing import Protocol, cast
 
@@ -36,10 +33,9 @@ class _QueryLocalJson(Protocol):
     ) -> _TraceEnvelope: ...
 
 
-class QueryTraceContractTest(unittest.TestCase):
+class TestQueryTraceContract:
     def _seed_query_state(self) -> SQLiteStore:
         connection = sqlite3.connect(":memory:")
-        self.addCleanup(connection.close)
         store = SQLiteStore(connection)
         store.ensure_schema()
         source = Source(
@@ -111,31 +107,19 @@ class QueryTraceContractTest(unittest.TestCase):
             _QueryLocalJson | None, getattr(module, "query_local_json", None)
         )
         if query_local_json is None:
-            self.fail("expected locontext.app.query.query_local_json")
+            raise AssertionError("expected locontext.app.query.query_local_json")
         return query_local_json(store, text, limit=5)
 
     def test_query_json_hit_contains_trace_fields(self) -> None:
         store = self._seed_query_state()
         envelope = self._query_local_json(store, "shared query text")
-
-        self.assertEqual(
-            [hit.document_locator for hit in envelope.hits],
-            [
-                "https://docs.example.com/docs/guide",
-                "https://docs.example.com/docs/reference",
-            ],
-        )
-        self.assertEqual(envelope.hits[0].rank, 1)
-        self.assertEqual(
-            envelope.hits[0].source_locator, "https://docs.example.com/docs"
-        )
-        self.assertEqual(envelope.hits[0].matched_terms, ["shared", "query", "text"])
-        self.assertEqual(
-            envelope.hits[0].match_query, '"shared" AND "query" AND "text"'
-        )
-        self.assertEqual(envelope.hits[1].section_path, ["Reference"])
-        self.assertEqual(envelope.hits[1].metadata, {"section_path": ["Reference"]})
-
-
-if __name__ == "__main__":
-    _ = unittest.main()
+        assert [hit.document_locator for hit in envelope.hits] == [
+            "https://docs.example.com/docs/guide",
+            "https://docs.example.com/docs/reference",
+        ]
+        assert envelope.hits[0].rank == 1
+        assert envelope.hits[0].source_locator == "https://docs.example.com/docs"
+        assert envelope.hits[0].matched_terms == ["shared", "query", "text"]
+        assert envelope.hits[0].match_query == '"shared" AND "query" AND "text"'
+        assert envelope.hits[1].section_path == ["Reference"]
+        assert envelope.hits[1].metadata == {"section_path": ["Reference"]}
