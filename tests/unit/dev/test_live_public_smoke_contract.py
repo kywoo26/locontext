@@ -1,6 +1,3 @@
-from __future__ import annotations
-
-import unittest
 from importlib import import_module
 from typing import Protocol, cast
 
@@ -13,7 +10,6 @@ EXPECTED_REPORT_FIELDS = {
     "fail_count",
     "sources",
 }
-
 EXPECTED_SOURCE_FIELDS = {
     "source_id",
     "url",
@@ -28,7 +24,6 @@ EXPECTED_SOURCE_FIELDS = {
     "top_locator_accepted",
     "error",
 }
-
 EXPECTED_STATUSES = {"pass", "warn", "fail"}
 
 
@@ -51,11 +46,7 @@ class _LivePublicSmokeModule(Protocol):
     ) -> dict[str, object]: ...
 
     def build_report(
-        self,
-        *,
-        started_at: str,
-        completed_at: str,
-        sources: list[dict[str, object]],
+        self, *, started_at: str, completed_at: str, sources: list[dict[str, object]]
     ) -> dict[str, object]: ...
 
 
@@ -64,7 +55,6 @@ def _module() -> _LivePublicSmokeModule:
         module = import_module("locontext.dev.live_public_smoke")
     except ModuleNotFoundError as exc:
         raise AssertionError("expected locontext.dev.live_public_smoke module") from exc
-
     build_source_result = getattr(module, "build_source_result", None)
     build_report = getattr(module, "build_report", None)
     if build_source_result is None or build_report is None:
@@ -74,7 +64,7 @@ def _module() -> _LivePublicSmokeModule:
     return cast(_LivePublicSmokeModule, cast(object, module))
 
 
-class LivePublicSmokeContractTest(unittest.TestCase):
+class TestLivePublicSmokeContract:
     def _assert_failure_case(
         self,
         *,
@@ -101,14 +91,13 @@ class LivePublicSmokeContractTest(unittest.TestCase):
             top_locator_accepted=top_locator_accepted,
             error=error,
         )
-
-        self.assertEqual(source["status"], status)
-        self.assertEqual(source["error"], error)
-        self.assertEqual(source["document_count"], document_count)
-        self.assertEqual(source["hit_count"], hit_count)
-        self.assertEqual(source["warning_count"], warning_count)
-        self.assertEqual(source["top_locator"], top_locator)
-        self.assertEqual(source["top_locator_accepted"], top_locator_accepted)
+        assert source["status"] == status
+        assert source["error"] == error
+        assert source["document_count"] == document_count
+        assert source["hit_count"] == hit_count
+        assert source["warning_count"] == warning_count
+        assert source["top_locator"] == top_locator
+        assert source["top_locator_accepted"] == top_locator_accepted
 
     def test_report_uses_exact_top_level_schema(self) -> None:
         smoke = _module()
@@ -146,15 +135,14 @@ class LivePublicSmokeContractTest(unittest.TestCase):
                 ),
             ],
         )
-
-        self.assertEqual(set(report), EXPECTED_REPORT_FIELDS)
-        self.assertEqual(report["started_at"], "2026-04-18T12:00:00Z")
-        self.assertEqual(report["completed_at"], "2026-04-18T12:05:00Z")
-        self.assertEqual(report["source_count"], 2)
-        self.assertEqual(report["pass_count"], 1)
-        self.assertEqual(report["warn_count"], 1)
-        self.assertEqual(report["fail_count"], 0)
-        self.assertEqual(len(cast(list[dict[str, object]], report["sources"])), 2)
+        assert set(report) == EXPECTED_REPORT_FIELDS
+        assert report["started_at"] == "2026-04-18T12:00:00Z"
+        assert report["completed_at"] == "2026-04-18T12:05:00Z"
+        assert report["source_count"] == 2
+        assert report["pass_count"] == 1
+        assert report["warn_count"] == 1
+        assert report["fail_count"] == 0
+        assert len(cast(list[dict[str, object]], report["sources"])) == 2
 
     def test_source_entries_use_exact_per_source_schema(self) -> None:
         smoke = _module()
@@ -172,17 +160,16 @@ class LivePublicSmokeContractTest(unittest.TestCase):
             top_locator_accepted=False,
             error="zero_documents",
         )
-
-        self.assertEqual(set(source), EXPECTED_SOURCE_FIELDS)
-        self.assertIn(source["status"], EXPECTED_STATUSES)
-        self.assertEqual(source["source_id"], "source-3")
-        self.assertEqual(source["url"], "https://code.example.com/project")
-        self.assertEqual(source["query"], "repo root")
-        self.assertEqual(source["error"], "zero_documents")
+        assert set(source) == EXPECTED_SOURCE_FIELDS
+        assert source["status"] in EXPECTED_STATUSES
+        assert source["source_id"] == "source-3"
+        assert source["url"] == "https://code.example.com/project"
+        assert source["query"] == "repo root"
+        assert source["error"] == "zero_documents"
 
     def test_status_vocabulary_is_fixed_to_pass_warn_fail(self) -> None:
-        self.assertEqual(EXPECTED_STATUSES, {"pass", "warn", "fail"})
-        self.assertEqual(sorted(EXPECTED_STATUSES), ["fail", "pass", "warn"])
+        assert EXPECTED_STATUSES == {"pass", "warn", "fail"}
+        assert sorted(EXPECTED_STATUSES) == ["fail", "pass", "warn"]
 
     def test_timeout_is_classified_as_fail(self) -> None:
         self._assert_failure_case(
@@ -227,7 +214,3 @@ class LivePublicSmokeContractTest(unittest.TestCase):
             top_locator="https://docs.example.com/failure/artifact",
             top_locator_accepted=True,
         )
-
-
-if __name__ == "__main__":
-    _ = unittest.main()

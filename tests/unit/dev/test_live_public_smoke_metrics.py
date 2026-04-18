@@ -1,6 +1,3 @@
-from __future__ import annotations
-
-import unittest
 from importlib import import_module
 from typing import Protocol, cast
 
@@ -24,11 +21,7 @@ class _LivePublicSmokeModule(Protocol):
     ) -> dict[str, object]: ...
 
     def build_report(
-        self,
-        *,
-        started_at: str,
-        completed_at: str,
-        sources: list[dict[str, object]],
+        self, *, started_at: str, completed_at: str, sources: list[dict[str, object]]
     ) -> dict[str, object]: ...
 
 
@@ -37,7 +30,6 @@ def _module() -> _LivePublicSmokeModule:
         module = import_module("locontext.dev.live_public_smoke")
     except ModuleNotFoundError as exc:
         raise AssertionError("expected locontext.dev.live_public_smoke module") from exc
-
     build_source_result = getattr(module, "build_source_result", None)
     build_report = getattr(module, "build_report", None)
     if build_source_result is None or build_report is None:
@@ -47,7 +39,7 @@ def _module() -> _LivePublicSmokeModule:
     return cast(_LivePublicSmokeModule, cast(object, module))
 
 
-class LivePublicSmokeMetricsTest(unittest.TestCase):
+class TestLivePublicSmokeMetrics:
     def test_report_counts_track_status_totals(self) -> None:
         smoke = _module()
         report = smoke.build_report(
@@ -98,16 +90,16 @@ class LivePublicSmokeMetricsTest(unittest.TestCase):
                 ),
             ],
         )
-
-        self.assertEqual(report["source_count"], 3)
-        self.assertEqual(report["pass_count"], 1)
-        self.assertEqual(report["warn_count"], 1)
-        self.assertEqual(report["fail_count"], 1)
+        assert report["source_count"] == 3
+        assert report["pass_count"] == 1
+        assert report["warn_count"] == 1
+        assert report["fail_count"] == 1
         sources = cast(list[dict[str, object]], report["sources"])
-        self.assertEqual(
-            [source["source_id"] for source in sources],
-            ["source-1", "source-2", "source-3"],
-        )
+        assert [source["source_id"] for source in sources] == [
+            "source-1",
+            "source-2",
+            "source-3",
+        ]
 
     def test_failure_semantics_cover_all_expected_classifications(self) -> None:
         smoke = _module()
@@ -205,7 +197,7 @@ class LivePublicSmokeMetricsTest(unittest.TestCase):
                     query="api token",
                     status="warn",
                     refresh_seconds=19.0,
-                    query_seconds=0.10,
+                    query_seconds=0.1,
                     document_count=2,
                     warning_count=4,
                     hit_count=1,
@@ -232,7 +224,6 @@ class LivePublicSmokeMetricsTest(unittest.TestCase):
                 ),
             ),
         ]
-
         expected = {
             "source add/refresh failure": ("fail", "source_add_refresh_failed"),
             "timeout": ("fail", "timeout"),
@@ -242,14 +233,8 @@ class LivePublicSmokeMetricsTest(unittest.TestCase):
             "warning budget breach": ("warn", "warning_budget_breached"),
             "artifact write failure": ("fail", "artifact_write_failed"),
         }
-
         for scenario_name, source in scenarios:
-            with self.subTest(scenario=scenario_name):
-                expected_status, expected_error = expected[scenario_name]
-                self.assertEqual(source["status"], expected_status)
-                self.assertEqual(source["error"], expected_error)
-                self.assertIn(source["status"], {"pass", "warn", "fail"})
-
-
-if __name__ == "__main__":
-    _ = unittest.main()
+            expected_status, expected_error = expected[scenario_name]
+            assert source["status"] == expected_status
+            assert source["error"] == expected_error
+            assert source["status"] in {"pass", "warn", "fail"}
